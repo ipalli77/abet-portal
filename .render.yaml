@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: abet-portal
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn main:app
+    envVars:
+      - key: FLASK_ENV
+        value: production
