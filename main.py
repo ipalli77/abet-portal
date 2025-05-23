@@ -67,10 +67,6 @@ SECRET_KEY = "CHANGE-ME"
 abet_mod = importlib.import_module("ABET_Data_Rev1")   # same directory
 abet_app = abet_mod.app                                # Flask instance in that file
 
-parent.config["SECRET_KEY"] = SECRET_KEY
-parent.config["SESSION_COOKIE_SECURE"] = True
-parent.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-
 
 # ------------------------------------------------------------------ #
 # tiny login page
@@ -544,6 +540,8 @@ caption{margin:2.5rem auto 1.2rem;font-size:1.6rem;font-weight:700;color:#003638
 # ------------------------------------------------------------------ #
 parent = Flask(__name__)
 parent.config["SECRET_KEY"] = SECRET_KEY
+parent.config["SESSION_COOKIE_SECURE"] = True
+parent.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 @parent.route("/login", methods=["GET", "POST"])
 def login():
