@@ -66,6 +66,11 @@ SECRET_KEY = "CHANGE-ME"
 # ------------------------------------------------------------------ #
 abet_mod = importlib.import_module("ABET_Data_Rev1")   # same directory
 abet_app = abet_mod.app                                # Flask instance in that file
+abet_app.config.update(
+    SECRET_KEY=SECRET_KEY,               # share the key
+    SESSION_COOKIE_SECURE=True,          # keep the same cookie policy
+    SESSION_COOKIE_SAMESITE="Lax",
+)
 
 
 # ------------------------------------------------------------------ #
