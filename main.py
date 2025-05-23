@@ -67,9 +67,9 @@ SECRET_KEY = "CHANGE-ME"
 abet_mod = importlib.import_module("ABET_Data_Rev1")   # same directory
 abet_app = abet_mod.app                                # Flask instance in that file
 
-abet_app.config["SECRET_KEY"] = SECRET_KEY      # share the cookie signer
-abet_app.config["SESSION_COOKIE_SECURE"] = True
-abet_app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+parent.config["SECRET_KEY"] = SECRET_KEY
+parent.config["SESSION_COOKIE_SECURE"] = True
+parent.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 
 # ------------------------------------------------------------------ #
@@ -1067,17 +1067,7 @@ def analyze_course():
     """
 
 if __name__ == "__main__":
-    # ensure the DB file exists if the ABET app expects it
-    if not os.path.exists("abet_data.db"):
-        open("abet_data.db", "a").close()
-
-    # run_simple handles the DispatcherMiddleware properly
     run_simple("0.0.0.0", 5000, application, use_reloader=True, use_debugger=True)
 
-# other imports and logic
-abet_mod = importlib.import_module("ABET_Data_Rev1")
-abet_app = abet_mod.app
-DB_NAME = abet_mod.DB_NAME
-
-# make it visible to waitress
-app = abet_app
+# expose the correct app for Render deployment
+app = application
