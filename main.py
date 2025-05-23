@@ -68,6 +68,9 @@ abet_mod = importlib.import_module("ABET_Data_Rev1")   # same directory
 abet_app = abet_mod.app                                # Flask instance in that file
 
 abet_app.config["SECRET_KEY"] = SECRET_KEY      # share the cookie signer
+abet_app.config["SESSION_COOKIE_SECURE"] = True
+abet_app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
 
 # ------------------------------------------------------------------ #
 # tiny login page
