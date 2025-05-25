@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: abet-portal
+    runtime: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn main:app"    # ← replace with <module>:<callable>
+    plan: free
