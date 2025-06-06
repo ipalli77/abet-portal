@@ -361,7 +361,6 @@ footer.copyright{
 <div class="btn-bar">
 <button class="btn home"   onclick="goHome()">🏠 Home</button>   <!-- NEW -->
   <button class="btn add"    onclick="addRow()">➕ Add row</button>
-  <button class="btn save"   onclick="saveDraft()">💾 Save Draft</button>
   <button class="btn submit" onclick="submitForm()">📤 Submit</button>
 </div>
 </main>
@@ -495,22 +494,30 @@ document.addEventListener('input', e=>{
 });
 document.addEventListener('change', e=>clearErr(e.target));
 
+/* =============================================================
+ *  DELETION TRACKING
+ * ============================================================= */
+const deletedIds = new Set();              // holds row IDs marked for delete
+
+function markDeleted(ir){                  // selector row ⇒ store its id
+  const id = ir.dataset.rowId;
+  if(id){ deletedIds.add(id); }
+}
+
 function deletePair(btn){
+  const ir = btn.closest('tr');            // selector row
+  const dr = ir.nextElementSibling;        // data row
+
+  if(document.querySelectorAll('.input-row').length <= 1){
+    alert('At least one row is required.'); return;
+  }
   if(!confirm('Remove this row?')) return;
 
-  const ir = btn.closest('tr');       // selector row
-  const dr = ir.nextElementSibling;   // data row
-
-  const pairs = document.querySelectorAll('.input-row').length;
-  if(pairs <= 1){                      // protect the last pair
-    alert('At least one row is required.');
-    return;
-  }
-
-  dr.remove();
-  ir.remove();
-  updateDeleteButtons();              // NEW
+  markDeleted(ir);                         // ← NEW
+  dr.remove(); ir.remove();
+  updateDeleteButtons();
 }
+
 
 /* ────────────────────────────────────────────────────────────────────────────────
  * 1)  NEW  enable/disable delete buttons when only one pair remains
@@ -588,6 +595,8 @@ function renderRecords(records){
     colourPair(ir, dr, rec.status);
     ir.dataset.status = dr.dataset.status = rec.status;   //  ← NECESSARY
     ir.dataset.rowId  = dr.dataset.rowId  = rec.id ?? "";
+    ir.dataset.orig = dr.dataset.orig = JSON.stringify(rec);   // ← NEW
+
   });
 
   updateDeleteButtons();
@@ -620,6 +629,8 @@ function addRow(){
   updateDeleteButtons();
   colourPair(ir, dr, 'new');   // remove any residual tint
   ir.dataset.status = dr.dataset.status = 'draft';
+  ir.dataset.rowId  = dr.dataset.rowId  = "";       // ← add this
+  ir.dataset.orig   = dr.dataset.orig   = "";       // ← and this
   
 }
 
@@ -694,17 +705,29 @@ function collect(){
 
 /* Convert whatever is currently on screen into JSON
    and ship it to /save_draft.  No validation needed. */
+/* ==============================================================
+ *  SAVE  —  store *new* rows + *edited* submitted rows as draft
+ * ============================================================== */
 function saveDraft(){
-  const all    = collect();                // rows in screen order
-  const drafts = [];                       // rows we’ll actually send
-  let i = 0;
-  document.querySelectorAll('.data-row').forEach(dr=>{
-    const ir = dr.previousElementSibling;
-    if(ir.dataset.status !== 'submitted'){ // skip rows already in DB
-      drafts.push(all[i]);
-    }
-    i++;
+  const allRows = collect();          // current state of every row
+  const drafts  = [];
+
+  document.querySelectorAll('.input-row').forEach((ir, i)=>{
+    const status = ir.dataset.status;                     // 'draft' | 'submitted'
+    const now    = allRows[i];                            // row as it is now
+    const orig   = ir.dataset.orig ? JSON.parse(ir.dataset.orig) : null;
+
+    /* decide if this row needs saving ------------------------------------ */
+    const changed = (status === 'draft') ? true           // brand-new ⇒ save
+                   : (orig && JSON.stringify(orig) !== JSON.stringify(now));
+
+    if (changed) drafts.push(now);
   });
+
+  if (!drafts.length){
+    alert('No new or edited rows to save.');
+    return;
+  }
 
   fetch('save_draft',{
     method :'POST',
@@ -712,20 +735,17 @@ function saveDraft(){
     body   : JSON.stringify({rows: drafts})
   })
   .then(r=>r.json())
-  .then(js=>alert(`Draft saved (${js.saved} row${js.saved!==1?'s':''}).`))
+  .then(js=>alert(`${js.saved} row(s) saved as draft.`))
   .catch(()=>alert('Unable to save draft right now.'));
 }
 
-
 /* ========== “Home” button handler ============================== */
 function goHome(){
-  const msg = "Save your draft before returning to the Home page?";
-  if(confirm(msg)){
-    saveDraft();                    // uses existing function
+  if(confirm("Return to Home page without saving changes?")){
+    window.location.href = "/logout";
   }
-  /* parent app’s /logout route clears the session + redirects → /login */
-  window.location.href = "/logout";
 }
+
 
 /* ================ colour helpers =================== */
 function colourPair(ir, dr, status){
@@ -760,36 +780,34 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
 /* submit handler */
 function submitForm(){
-  if(!validate()){ alert('Please complete all fields…'); return; }
-  if(!confirm('Are you sure you want to submit?')) return;
+  if (!validate()){
+    alert('Please complete all fields and ensure E + P + A + N = 100.');
+    return;
+  }
+  if (!confirm('Are you sure you want to submit?')) return;
 
-  const allRows = collect();                         // every row, old or new
-  const payload = [];
-  document.querySelectorAll('.input-row').forEach((ir, idx)=>{
-    const status = ir.dataset.status;                // 'submitted' | 'draft'
-    const orig   = ir.dataset.orig ? JSON.parse(ir.dataset.orig) : null;
-    const now    = allRows[idx];
+  const payload  = collect();                 // sends every row on screen
+  const delArray = Array.from(deletedIds);    // IDs of rows you removed
 
-    let changed = true;
-    if(status === 'submitted' && orig){
-      changed = JSON.stringify(orig) !== JSON.stringify(now);
+  fetch('submit', {
+    method : 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body   : JSON.stringify({ rows: payload, delete_ids: delArray })
+  })
+  .then(res => {
+    if (!res.ok) throw new Error('Bad response');
+    return res.json();                        // <-- parse JSON here
+  })
+  .then(js => {
+    if ('saved' in js){
+      alert(`${js.saved} row(s) saved successfully.`);
+      deletedIds.clear();                     // reset for next session
+      window.location.href = '/logout';
+    } else {
+      alert('Submission finished, but row count not returned.');
     }
-    if(changed) payload.push(now);                   // new or edited
-  });
-
-  if(!payload.length){ alert('No changes to save.'); return; }
-
-  fetch('submit',{
-    method :'POST',
-    headers:{'Content-Type':'application/json'},
-    body   : JSON.stringify({rows: payload})
   })
-  .then(r=>r.json())
-  .then(js=>{
-    alert(`${js.saved} row(s) saved successfully.`);
-    window.location.href = "/logout";
-  })
-  .catch(()=>alert('Submission error'));
+  .catch(() => alert('Submission error'));
 }
 
 
@@ -960,33 +978,36 @@ def load_records():
     allowed = FAC_COURSES.get(user, [])      # [] → treat as super-user
 
     with sqlite3.connect(DB_NAME) as conn:
+        conn.row_factory = sqlite3.Row          # ← 1️⃣ rows behave like dicts
         cur = conn.cursor()
 
-        # ---------- submitted rows --------------------------------------- #
-        if allowed:                               # faculty
-            placeholders = ",".join("?" * len(allowed))
-            sql = f"""
+        # ---------- submitted rows -------------------------------------- #
+        if allowed:
+            ph = ",".join("?" * len(allowed))
+            cur.execute(f"""
                 SELECT *, 'submitted' AS status
                   FROM abet_entries
-                 WHERE course IN ({placeholders})
-            """
-            cur.execute(sql, allowed)
-        else:                                     # super-user
+                 WHERE course IN ({ph})
+            """, allowed)
+        else:
             cur.execute("""
                 SELECT *, 'submitted' AS status
                   FROM abet_entries
               ORDER BY course ASC
             """)
 
-        colnames   = [d[0] for d in cur.description]     # from the cursor
-        submitted  = [dict(zip(colnames, row)) for row in cur.fetchall()]
+        submitted = [dict(r) for r in cur.fetchall()]      # rows → dicts
 
-        # ---------- draft blob ------------------------------------------- #
+        # ---------- draft blob ----------------------------------------- #
         cur.execute("SELECT blob FROM user_drafts WHERE user=?", (user,))
-        row = cur.fetchone()
-        drafts = json.loads(row[0]) if row else []
+        row    = cur.fetchone()
+        drafts = json.loads(row["blob"]) if row else []    # 2️⃣ use dict key
         for d in drafts:
             d["status"] = "draft"
+
+    # ---------- hide green copies that have an amber twin -------------- #
+    draft_ids = {d.get("id") for d in drafts if d.get("id")}
+    submitted = [s for s in submitted if s.get("id") not in draft_ids]
 
     return jsonify({"rows": submitted + drafts})
 
@@ -994,42 +1015,65 @@ def load_records():
 @app.route("/submit", methods=["POST"])
 def submit():
     """
-    • INSERT brand-new rows   (no id in the payload)
-    • UPDATE existing rows    (payload includes id)
-    • Normalise course code   (NBSP → space)
+    • INSERT brand-new rows (no id)
+    • UPDATE existing rows  (has id)
+    • DELETE rows whose id is in delete_ids
+    • Clear draft blob when done
     """
-    rows = request.get_json(force=True).get("rows", [])
+    data       = request.get_json(force=True) or {}
+    rows       = data.get("rows", [])
+    delete_ids = data.get("delete_ids", [])
 
     with sqlite3.connect(DB_NAME) as conn:
+        # ----- 1. DELETE --------------------------------------------------
+        if delete_ids:
+            ph = ",".join("?" * len(delete_ids))
+            conn.execute(f"DELETE FROM abet_entries WHERE id IN ({ph})",
+                         delete_ids)
+
+            # also remove those rows from the user's draft blob
+            cur  = conn.execute(
+                "SELECT blob FROM user_drafts WHERE user=?", (session["user"],)
+            )
+            row  = cur.fetchone()
+            if row:
+                import json
+                drafts = [d for d in json.loads(row["blob"])
+                          if str(d.get("id")) not in map(str, delete_ids)]
+                if drafts:
+                    conn.execute(
+                        "UPDATE user_drafts SET blob=? WHERE user=?",
+                        (json.dumps(drafts), session["user"])
+                    )
+                else:
+                    conn.execute(
+                        "DELETE FROM user_drafts WHERE user=?",
+                        (session["user"],)
+                    )
+
+        # ----- 2. INSERT or UPDATE ---------------------------------------
         for r in rows:
-
-            # ---- clean up MECE NNNN vs MECE NNNN --------------------------
-            clean_course = r["course"].replace("\u00A0", " ")
-
+            clean_course = r["course"].replace("\u00A0", " ")  # NBSP → space
             values = (
-                clean_course,                   # course
-                r["course_name"],
+                clean_course, r["course_name"],
                 r["slo"], r["pi"],
                 r["assessment_tool"], r["explanation"],
                 r["semester"], r["blooms_level"],
                 r["expert"], r["practitioner"], r["apprentice"], r["novice"],
                 r["observations"]
             )
-
-            row_id = r.get("id")                # may be None / ""
-            if row_id:                          # ---- UPDATE existing row
+            row_id = r.get("id")
+            if row_id:   # UPDATE
                 conn.execute("""
                     UPDATE abet_entries SET
-                        course          =?, course_name =?,
-                        slo             =?, pi          =?,
-                        assessment_tool =?, explanation =?,
-                        semester        =?, blooms_level=?,
-                        expert          =?, practitioner=?,
-                        apprentice      =?, novice      =?,
-                        observations    =?
-                    WHERE id = ?;
+                        course=?, course_name=?, slo=?, pi=?,
+                        assessment_tool=?, explanation=?,
+                        semester=?, blooms_level=?,
+                        expert=?, practitioner=?, apprentice=?, novice=?,
+                        observations=?
+                    WHERE id=?;
                 """, (*values, row_id))
-            else:                               # ---- INSERT new row
+            else:        # INSERT
                 conn.execute("""
                     INSERT INTO abet_entries (
                         course, course_name, slo, pi,
@@ -1041,6 +1085,8 @@ def submit():
                 """, values)
 
         conn.commit()
+
+        # ----- 3. clear user's draft blob (optional but keeps UI clean) ---
         conn.execute("DELETE FROM user_drafts WHERE user=?", (session["user"],))
 
     return jsonify({"saved": len(rows)})
