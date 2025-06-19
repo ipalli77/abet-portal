@@ -5,6 +5,9 @@ Run:
     python main.py
 Open http://127.0.0.1:5000/login
 """
+import os
+DB_PATH = os.getenv("ABET_DB_PATH", "/data/abet_data.db")   # default for Render
+DB_NAME = DB_PATH
 
 from flask import (
     Flask, render_template_string, request,

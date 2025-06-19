@@ -12,7 +12,8 @@ import sqlite3
 
 from flask import session, redirect
 
-DB_NAME = "abet_data.db"
+import os
+DB_NAME = os.getenv("ABET_DB_PATH", "/data/abet_data.db")
 
 # --------------------------------------------------------------------------- #
 # Database helper
