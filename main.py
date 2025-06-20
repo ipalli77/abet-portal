@@ -719,6 +719,7 @@ def analyze_course():
     df['attain'] = df['expert'] + df['practitioner']
 
     df["pi"] = df["pi"].astype(str).str.strip()  # NEW ↓ normalise text
+    df = df[df["pi"] != ""]
     pis = sorted(df["pi"].unique())  # NEW ↓ dynamic PI list
     n_pi = len(pis)  # NEW ↓ use everywhere
 
@@ -835,11 +836,17 @@ def analyze_course():
     n_sem, n_pi = len(semesters), len(pis)
 
     # -----------------  PIVOT #2 : rows = PI + Bloom ------------------
+    # -----------------  PIVOT 2 : rows = PI + Bloom -----------------
     pivot2 = (df.groupby(["pi_bl", "sem_short"])["attain"]
               .mean()
-              .unstack()  # no fill_value
-              .reindex(index=combo_order)  # keep order but don't invent rows
-              .reindex(columns=semesters))  # same for semesters
+              .unstack())  # no re-index, no fill_value
+
+    pivot2 = pivot2.dropna(how="all")  # toss rows that are all-NaN
+    combo_order = pivot2.index.tolist()  # what’s left is what we plot
+    n_combo = len(combo_order)
+
+    pi_tag_for_combo = [lbl.split(" (")[0] for lbl in combo_order]
+    pi_index = {short_pi(p): i for i, p in enumerate(pis) if p.strip()}
 
     # colour palettes – distinct-but-subtle shades per PI
     greens = plt.cm.Greens(np.linspace(0.45, 0.85, n_pi))
