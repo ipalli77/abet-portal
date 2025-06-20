@@ -5,9 +5,24 @@ Run:
     python main.py
 Open http://127.0.0.1:5000/login
 """
-import os
-DB_PATH = os.getenv("ABET_DB_PATH", "/data/abet_data.db")   # default for Render
-DB_NAME = DB_PATH
+# ─── top of each file (after imports) ───────────────────────────────
+import os, sqlite3, pathlib
+
+IS_PROD = os.getenv("FLASK_ENV") == "production"     # set on Render
+DB_PATH = os.getenv("ABET_DB_PATH") or (
+          "/data/abet_data.db" if IS_PROD            # Render disk
+          else os.path.join(os.path.dirname(__file__), "abet_data.db"))
+
+# make sure the containing folder exists (but ignore "/" on macOS)
+folder = pathlib.Path(DB_PATH).parent
+if str(folder) not in ("/", ""):
+    folder.mkdir(parents=True, exist_ok=True)
+
+# optional back-compat alias until you delete every DB_NAME reference
+
+def get_conn():
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
+
 
 from flask import (
     Flask, render_template_string, request,
@@ -18,7 +33,6 @@ import importlib
 import statsmodels.formula.api as smf
 abet_mod = importlib.import_module("ABET_Data_Rev1")   # or Rev2
 abet_app = abet_mod.app
-DB_NAME = abet_mod.DB_NAME
 import sqlite3
 import os
 from werkzeug.serving import run_simple
@@ -632,7 +646,8 @@ def download():
         return redirect(url_for("abet"))
 
     course = request.args.get("course")        # may be None
-    with sqlite3.connect(DB_NAME) as conn:
+    with get_conn() as conn:
+
         if course:
             df = pd.read_sql_query(
                 "SELECT * FROM abet_entries WHERE course = ?",
@@ -667,7 +682,8 @@ def analyze_course():
         return "<script>alert('Missing course/SLO');window.close();</script>"
 
 
-    with sqlite3.connect(DB_NAME) as conn:
+    with get_conn() as conn:
+
         q = """
                 SELECT pi,
                        semester,
@@ -815,6 +831,7 @@ def analyze_course():
 
     semesters = pivot1.index.tolist()
     pis = pivot1.columns.tolist()
+    pi_index = {short_pi(p): i for i, p in enumerate(pis)}  # ← add this
     n_sem, n_pi = len(semesters), len(pis)
 
     # -----------------  PIVOT #2 : rows = PI + Bloom ------------------
@@ -880,6 +897,8 @@ def analyze_course():
     # ===============  PLOT 2 : grouped by PI + Bloom  ======================
     x2 = np.arange(n_combo)
     bar_w2 = 0.8 / n_sem
+
+    pi_tag_for_combo = [c.split(" (")[0] for c in combo_order]  # ← add this
 
     for j, sem in enumerate(semesters):
         vals = pivot2[sem].values

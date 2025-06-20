@@ -12,15 +12,34 @@ import sqlite3
 
 from flask import session, redirect
 
-import os
-DB_NAME = os.getenv("ABET_DB_PATH", "/data/abet_data.db")
+# ─── top of each file (after imports) ───────────────────────────────
+import os, sqlite3, pathlib
+
+IS_PROD = os.getenv("FLASK_ENV") == "production"     # set on Render
+DB_PATH = os.getenv("ABET_DB_PATH") or (
+          "/data/abet_data.db" if IS_PROD            # Render disk
+          else os.path.join(os.path.dirname(__file__), "abet_data.db"))
+
+# make sure the containing folder exists (but ignore "/" on macOS)
+folder = pathlib.Path(DB_PATH).parent
+if str(folder) not in ("/", ""):
+    folder.mkdir(parents=True, exist_ok=True)
+
+# optional back-compat alias until you delete every DB_NAME reference
+DB_NAME = DB_PATH
+
+def get_conn():
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
+
+
+
 
 # --------------------------------------------------------------------------- #
 # Database helper
 # --------------------------------------------------------------------------- #
 def init_db() -> None:
     """Create the SQLite tables on first run."""
-    with sqlite3.connect(DB_NAME) as conn:
+    with get_conn() as conn:
         # -------- main production table --------
         conn.execute("""
             CREATE TABLE IF NOT EXISTS abet_entries (
@@ -978,7 +997,7 @@ def load_records():
     }
     allowed = FAC_COURSES.get(user, [])      # [] → treat as super-user
 
-    with sqlite3.connect(DB_NAME) as conn:
+    with get_conn() as conn:
         conn.row_factory = sqlite3.Row          # ← 1️⃣ rows behave like dicts
         cur = conn.cursor()
 
@@ -1025,7 +1044,7 @@ def submit():
     rows       = data.get("rows", [])
     delete_ids = data.get("delete_ids", [])
 
-    with sqlite3.connect(DB_NAME) as conn:
+    with get_conn() as conn:
         # ----- 1. DELETE --------------------------------------------------
         if delete_ids:
             ph = ",".join("?" * len(delete_ids))
