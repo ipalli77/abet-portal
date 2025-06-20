@@ -807,23 +807,22 @@ def analyze_course():
     g['high'] = g['fit'] + crit * se
 
     # -----------------  PIVOT #1 : rows = semester ----------------------
+    # -----------------  PIVOT #1 : rows = semester --------------------
     pivot1 = (df.groupby(["sem_short", "pi"])["attain"]
-              .mean()
-              .unstack(fill_value=0)
-              .reindex(columns=pis, fill_value=0)
+              .mean()  # averages that really exist
+              .unstack()  # *no* fill_value
               .sort_index(key=lambda idx: idx.map(sem_key)))
 
     semesters = pivot1.index.tolist()
     pis = pivot1.columns.tolist()
     n_sem, n_pi = len(semesters), len(pis)
 
-    # -----------------  PIVOT #2 : rows = PI ----------------------------
-    # -----------------  PIVOT #2 : rows = PI + Bloom ------------------------
+    # -----------------  PIVOT #2 : rows = PI + Bloom ------------------
     pivot2 = (df.groupby(["pi_bl", "sem_short"])["attain"]
               .mean()
-              .unstack(fill_value=0)
-              .reindex(index=combo_order, fill_value=0)  # every combo row
-              .reindex(columns=semesters, fill_value=0))  # every semester
+              .unstack()  # no fill_value
+              .reindex(index=combo_order)  # keep order but don't invent rows
+              .reindex(columns=semesters))  # same for semesters
 
     # colour palettes – distinct-but-subtle shades per PI
     greens = plt.cm.Greens(np.linspace(0.45, 0.85, n_pi))
@@ -849,10 +848,14 @@ def analyze_course():
 
     for i, pi in enumerate(pis):
         vals = pivot1[pi].values
-        pos = x1 - 0.4 + (i + 0.5) * bar_w1
-        colours = [greens[i] if v >= 70 else reds[i] for v in vals]
+        pos = x1 - 0.4 + (i + .5) * bar_w1
 
-        bars = ax1.bar(pos, vals, width=bar_w1, color=colours,
+        # mask out semesters that have no data for this PI
+        mask = ~np.isnan(vals)
+        colours = [greens[i] if v >= 70 else reds[i] for v in vals[mask]]
+
+        bars = ax1.bar(pos[mask], vals[mask],
+                       width=bar_w1, color=colours,
                        edgecolor="#333", linewidth=.5)
         ax1.bar_label(bars, fmt="%.0f", padding=2, fontsize=9, color="#222")
 
@@ -880,22 +883,17 @@ def analyze_course():
 
     for j, sem in enumerate(semesters):
         vals = pivot2[sem].values
-        pos = x2 - 0.4 + (j + 0.5) * bar_w2
+        pos = x2 - 0.4 + (j + .5) * bar_w2
 
-        # colour choice still depends only on *which PI* the bar belongs to
-        # make a reverse map   "PI-1" → index 0, 1, 2 …
-        pi_index = {short_pi(p): i for i, p in enumerate(pis)}
-
-        pi_tag_for_combo = [c.split(" (")[0] for c in combo_order]
-
+        mask = ~np.isnan(vals)
         colours = [greens[pi_index[tag]] if v >= 70 else reds[pi_index[tag]]
-                   for tag, v in zip(pi_tag_for_combo, vals)]
+                   for tag, v in zip(pi_tag_for_combo, vals) if not np.isnan(v)]
 
-        bars = ax2.bar(pos, vals, width=bar_w2, color=colours,
+        bars = ax2.bar(pos[mask], vals[mask],
+                       width=bar_w2, color=colours,
                        edgecolor="#333", linewidth=.5)
 
-        # numeric labels
-        for x, y in zip(pos, vals):
+        for x, y in zip(pos[mask], vals[mask]):
             ax2.text(x, y + 1.2, f"{y:.0f}", ha="center",
                      va="bottom", fontsize=9, color="#222")
 
