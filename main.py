@@ -6,6 +6,10 @@ Run:
 Open http://127.0.0.1:5000/login
 """
 # ─── top of each file (after imports) ───────────────────────────────
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+import matplotlib.pyplot as plt
 import os, sqlite3, pathlib
 
 IS_PROD = os.getenv("FLASK_ENV") == "production"     # set on Render
@@ -524,6 +528,13 @@ function analyze(){
               '_blank','width=1100,height=800,resizable=yes');
 }
 
+function analyzeSlo(){
+  const slo = document.getElementById('sloOnlySel').value;
+  window.open(`/analyze_slo?slo=${encodeURIComponent(slo)}`,
+              '_blank','width=1100,height=800,resizable=yes');
+}
+document.getElementById('analyzeSloBtn').onclick = analyzeSlo;
+
 // ─── enable Analyze SLO btn when dropdown chosen ────────────────
 document.getElementById('sloOnlySel').addEventListener('change',e=>{
   document.getElementById('analyzeSloBtn').disabled = !e.target.value;
@@ -720,6 +731,14 @@ def analyze_course():
 
     df["pi"] = df["pi"].astype(str).str.strip()  # NEW ↓ normalise text
     df = df[df["pi"] != ""]
+    # ─── bail-out if the filtered dataframe is now empty ────────────
+    if df.empty:
+        return "<script>alert('No usable PI / Bloom data for this course–SLO');" \
+               "window.close();</script>"
+
+    pis = sorted(df["pi"].unique())
+    if not pis:  # no PI left  → nothing to plot
+        return "<script>alert('No PI records after cleaning');window.close();</script>"
     pis = sorted(df["pi"].unique())  # NEW ↓ dynamic PI list
     n_pi = len(pis)  # NEW ↓ use everywhere
 
@@ -870,20 +889,21 @@ def analyze_course():
     bar_w1 = 0.8 / n_pi
     legend_handles = []
 
-    for i, pi in enumerate(pis):
-        vals = pivot1[pi].values
-        pos = x1 - 0.4 + (i + .5) * bar_w1
+    if n_pi:
+        for i, pi in enumerate(pis):
+            vals = pivot1[pi].values
+            pos = x1 - 0.4 + (i + .5) * bar_w1
 
-        # mask out semesters that have no data for this PI
-        mask = ~np.isnan(vals)
-        colours = [greens[i] if v >= 70 else reds[i] for v in vals[mask]]
+            # mask out semesters that have no data for this PI
+            mask = ~np.isnan(vals)
+            colours = [greens[i] if v >= 70 else reds[i] for v in vals[mask]]
 
-        bars = ax1.bar(pos[mask], vals[mask],
-                       width=bar_w1, color=colours,
-                       edgecolor="#333", linewidth=.5)
-        ax1.bar_label(bars, fmt="%.0f", padding=2, fontsize=9, color="#222")
+            bars = ax1.bar(pos[mask], vals[mask],
+                           width=bar_w1, color=colours,
+                           edgecolor="#333", linewidth=.5)
+            ax1.bar_label(bars, fmt="%.0f", padding=2, fontsize=9, color="#222")
 
-        legend_handles.append(mpatches.Patch(color=greens[i], label=pi))
+            legend_handles.append(mpatches.Patch(color=greens[i], label=pi))
 
     ax1.set_ylim(0, 110)
     ax1.set_xticks(x1)
@@ -907,21 +927,25 @@ def analyze_course():
 
     pi_tag_for_combo = [c.split(" (")[0] for c in combo_order]  # ← add this
 
-    for j, sem in enumerate(semesters):
-        vals = pivot2[sem].values
-        pos = x2 - 0.4 + (j + .5) * bar_w2
+    if n_combo:
+        for j, sem in enumerate(semesters):
+            vals = pivot2[sem].values
+            pos = x2 - 0.4 + (j + .5) * bar_w2
 
-        mask = ~np.isnan(vals)
-        colours = [greens[pi_index[tag]] if v >= 70 else reds[pi_index[tag]]
-                   for tag, v in zip(pi_tag_for_combo, vals) if not np.isnan(v)]
+            mask = ~np.isnan(vals)
+            colours = [
+                greens[pi_index.get(tag, 0)] if v >= 70  # safe default
+                else reds[pi_index.get(tag, 0)]
+                for tag, v in zip(pi_tag_for_combo, vals) if not np.isnan(v)
+            ]
 
-        bars = ax2.bar(pos[mask], vals[mask],
-                       width=bar_w2, color=colours,
-                       edgecolor="#333", linewidth=.5)
+            bars = ax2.bar(pos[mask], vals[mask],
+                           width=bar_w2, color=colours,
+                           edgecolor="#333", linewidth=.5)
 
-        for x, y in zip(pos[mask], vals[mask]):
-            ax2.text(x, y + 1.2, f"{y:.0f}", ha="center",
-                     va="bottom", fontsize=9, color="#222")
+            for x, y in zip(pos[mask], vals[mask]):
+                ax2.text(x, y + 1.2, f"{y:.0f}", ha="center",
+                         va="bottom", fontsize=9, color="#222")
 
     # axis cosmetics
     ax2.set_ylim(0, 95)
@@ -1102,6 +1126,153 @@ def analyze_course():
 
     </body>
     </html>
+    """
+
+@parent.route("/analyze_slo")
+@login_required
+def analyze_slo():
+    from importlib import import_module  # ← 1
+    DB_NAME = import_module("ABET_Data_Rev1").DB_NAME  # ← 2
+    slo = request.args.get("slo","").strip()
+    if not slo:
+        return "<script>alert('Select an SLO first');window.close();</script>"
+
+    with sqlite3.connect(DB_NAME) as conn:
+        q = """
+            SELECT course, pi, blooms_level, semester,
+                   expert + practitioner AS attain
+              FROM abet_entries
+             WHERE slo = ?
+        """
+        df = pd.read_sql_query(q, conn, params=(slo,))
+
+    if df.empty:
+        return "<script>alert('No data for this SLO');window.close();</script>"
+
+    # ─────────────────────  DATA CLEAN-UP  ──────────────────────────────
+    df["pi"] = df["pi"].astype(str).str.strip()
+    df = df[df["pi"] != ""]                      # drop blank PI rows
+
+    # map Bloom and semester helpers re-use your earlier functions
+    orderB = ["Remember","Understand","Apply","Analyze","Evaluate","Create"]
+    df["blooms_level"] = pd.Categorical(df["blooms_level"],
+                                        categories=orderB, ordered=True)
+
+    # semester label helpers ── reuse the course-level versions
+    def short_sem(sem: str) -> str:
+        try:
+            season, yr = sem.split()
+            tag = "F" if season.lower().startswith("f") else "Sp"
+            return f"{tag}{yr[-2:]}"
+        except ValueError:
+            return sem
+
+    def sem_key(tag: str) -> int:  # F20 → 40201, Sp21 → 40202 …
+        if tag.startswith("F"):
+            return int("20" + tag[1:]) * 2 + 1
+        elif tag.startswith("Sp"):
+            return int("20" + tag[2:]) * 2
+        return 10 ** 9
+
+    df["sem_short"] = df["semester"].apply(short_sem)
+
+    # ─────────────────────  FIGURE  ─────────────────────────────────────
+    plt.close("all")
+    fig, (axA, axB, axC) = plt.subplots(
+        nrows=3, figsize=(9, 11), dpi=150,
+        gridspec_kw=dict(hspace=0.65, height_ratios=[1, 1, 1.25])
+    )
+
+    # === A ░░ Course-wise attainment bar-chart ░░ ======================
+    course_mean = (
+        df.groupby("course")["attain"].mean()
+          .sort_values(ascending=False)
+    )
+    axA.barh(course_mean.index, course_mean.values, color="#4d9078")
+    axA.axvline(70, ls="--", color="red", lw=1)
+    axA.set_xlabel("% Expert + Practitioner")
+    axA.set_title(f"SLO { slo } – average attainment per course",
+                  weight="bold", fontsize=12)
+    for y,v in enumerate(course_mean.values):
+        axA.text(v+1, y, f"{v:.0f}", va="center", fontsize=9)
+    axA.invert_yaxis()                    # best course on top
+    axA.spines[["right","top"]].set_visible(False)
+
+    # === B ░░ Bloom-level box-plot across ALL courses ░░ ===============
+    grouped = [g["attain"].values for _, g in
+               df.groupby("blooms_level") if len(g)]
+    ticks   = [lvl for lvl in orderB if lvl in df.blooms_level.unique()]
+    axB.boxplot(grouped, patch_artist=True,
+                boxprops=dict(facecolor="#8DB9CA", alpha=.75),
+                medianprops=dict(color="firebrick",lw=1))
+    axB.axhline(70, ls="--", color="red", lw=.9)
+    axB.set_xticklabels(ticks, rotation=0, fontsize=9)
+    axB.set_ylabel("% Expert + Practitioner")
+    axB.set_title(f"SLO { slo } – Bloom-level distribution (all courses)",
+                  weight="bold", fontsize=12)
+    axB.spines[["right","top"]].set_visible(False)
+
+    # === C ░░ semester trend across ALL courses ░░ ======================
+    sem_mean = (df.groupby("sem_short")["attain"]
+                .mean()
+                .sort_index(key=lambda s: s.map(sem_key)))
+
+    sem_idx = np.arange(len(sem_mean))  # 0,1,2,… in chronological order
+
+    # ─── fit simple OLS:  y = β0 + β1·semester_idx  ──────────────────────
+    X = sm.add_constant(sem_idx)  # adds the intercept column
+    ols = sm.OLS(sem_mean.values, X).fit()
+
+    pred = ols.get_prediction(X)
+    low95, high95 = pred.conf_int().T  # two 1-D arrays
+
+    # ─── plot ────────────────────────────────────────────────────────────
+    axC.plot(sem_mean.index, sem_mean.values,
+             marker='o', lw=1.5, color="#005158", label="Observed")
+    axC.plot(sem_mean.index, ols.fittedvalues,
+             lw=2.2, color="#2d7b82", label="Trend line")
+    axC.fill_between(sem_mean.index, low95, high95,
+                     color="#2d7b82", alpha=.20, label="95 % CI")
+    axC.axhline(70, ls="--", color="red", lw=1, label="ABET 70 %")
+
+    # numeric labels on the dots
+    for x, y in zip(sem_mean.index, sem_mean.values):
+        axC.text(x, y + 1.2, f"{y:.0f}", ha="center", fontsize=9)
+
+    axC.set_ylabel("% Expert + Practitioner")
+    axC.set_title(f"SLO {slo} – overall attainment per semester",
+                  weight="bold", fontsize=12)
+    axC.set_xticklabels(sem_mean.index, rotation=0, fontsize=9)
+    axC.spines[["right", "top"]].set_visible(False)
+
+    # slope + p-value annotation (optional but handy)
+    slope, pval = ols.params[1], ols.pvalues[1]
+    axC.text(0.02, 0.07,
+             f"$\\beta_1$ = {slope:+.2f} pp/term\n$p$ = {pval:.3f}",
+             transform=axC.transAxes, ha="left", va="bottom", fontsize=9,
+             bbox=dict(boxstyle="round,pad=0.3", fc="#f5f5f5", ec="none", alpha=.85))
+
+    axC.legend(fontsize=8, loc="lower right")
+
+    # annotate each point
+    for x, y in zip(sem_mean.index, sem_mean.values):
+        axC.text(x, y + 1.2, f"{y:.0f}", ha="center", fontsize=9)
+
+    fig.tight_layout()
+
+    # ---------- embed to HTML ------------------------------------------
+    buf = BytesIO()
+    fig.savefig(buf, format="png")
+    img64 = base64.b64encode(buf.getvalue()).decode()
+
+    return f"""
+    <!doctype html><html><head><title>SLO {slo} analysis</title></head>
+    <body style="margin:0;display:flex;justify-content:center;align-items:center;
+                 height:100vh;background:#f7f9fc">
+      <img src="data:image/png;base64,{img64}"
+           style="max-width:90%;height:auto;box-shadow:0 4px 18px rgba(0,0,0,.15);
+                  border-radius:8px">
+    </body></html>
     """
 
 if __name__ == "__main__":
