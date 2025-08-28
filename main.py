@@ -811,6 +811,16 @@ def analyze_course():
     u = pd.Series({k: v.values[0] for k, v in lmm.random_effects.items()}) \
         .sort_index()
 
+    low, high = u.min(), u.max()
+    if low < 0 < high:  # data on both sides of zero
+        vmin, vcenter, vmax = low, 0, high
+    else:  # all positive OR all negative
+        vmin, vmax = low, high
+        vcenter = 0.5 * (vmin + vmax)  # midpoint
+    divnorm = colors.TwoSlopeNorm(vcenter=vcenter, vmin=vmin, vmax=vmax)
+    cmap = plt.cm.RdYlGn
+
+
     # ─── 4.  build g = tidy table for plotting  (NEW)  ──────────────────
     g = (df.groupby(['sem_short', 'semester_idx'])
          .agg(mean_attain=('attain', 'mean'))
@@ -1060,7 +1070,7 @@ def analyze_course():
                for s in g.semester_idx.map(lambda i: sem_order[i])]
 
     ax4.scatter(g.semester_idx, g.mean_attain,
-                s=80, c=colours, edgecolor="#333", label='Observed')
+                s=80, c=colours, edgecolor="#333", label="Observed")
     ax4.plot(g.semester_idx, g.fit, lw=2.2, label='Model trend')
     ax4.fill_between(g.semester_idx, g.low, g.high, alpha=.18)
     ax4.axhline(70, ls='--', color='red', lw=.9, label='ABET 70 % target')
