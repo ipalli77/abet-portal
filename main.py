@@ -27,6 +27,34 @@ if str(folder) not in ("/", ""):
 def get_conn():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
+# ---- separate database for Graduate Survey ----
+SURVEY_DB_PATH = os.getenv("ABET_SURVEY_DB_PATH") or (
+    "/data/graduate_survey.db" if IS_PROD
+    else os.path.join(os.path.dirname(__file__), "graduate_survey.db")
+)
+
+# make sure the folder exists (mirrors your main DB setup)
+survey_folder = pathlib.Path(SURVEY_DB_PATH).parent
+if str(survey_folder) not in ("/", ""):
+    survey_folder.mkdir(parents=True, exist_ok=True)
+
+def get_survey_conn():
+    return sqlite3.connect(SURVEY_DB_PATH, check_same_thread=False)
+
+# --- Graduate Survey table bootstrap ---------------------------------
+def init_survey_db():
+    with get_survey_conn() as conn:   # ← use the SURVEY DB here
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS graduate_survey_responses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_name TEXT,
+                year_graduated TEXT,
+                job_plan TEXT,
+                answers_json TEXT,
+                submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+init_survey_db()
 
 from flask import (
     Flask, render_template_string, request,
@@ -79,6 +107,7 @@ USERS = {
     "Kamal Sarkar"    : "1YEQ",
     "Mataz Alcoutlabi": "7ICU",
     "Super User": "LAMR",
+    "Graduate Survey": "SURVEY",  # simple passcode; change anytime
 }
 SECRET_KEY = "CHANGE-ME"
 
@@ -311,6 +340,7 @@ body{padding-left:.5rem;padding-right:.5rem}
   <option>Mataz Alcoutlabi</option>
   <option>Super User</option>
   <option>MECE Admin</option>
+  <option>Graduate Survey</option>
 </select>
 
         <label>Password</label>
@@ -457,6 +487,15 @@ footer.copyright{
       <button class='btn' onclick='displayRecords()'>Display Database Records</button>
     </div>
   </section>
+  
+  <!-- 1b ░░░ Graduate Survey – Record Preview ░░░ -->
+<section class='section'>
+  <h2 class='section-hdr'>Graduate Survey – Record Preview</h2>
+  <div class='row' style="gap:.8rem">
+    <button class='btn' onclick='displaySurvey()'>Display Graduate Survey Data</button>
+    <button class='btn' onclick='analyzeSurvey()'>Analyze Data</button>
+  </div>
+</section>
 
   <!-- 2 ░░░ Course‑Level Analysis ░░░ -->
   <section class='section'>
@@ -539,6 +578,13 @@ document.getElementById('analyzeSloBtn').onclick = analyzeSlo;
 document.getElementById('sloOnlySel').addEventListener('change',e=>{
   document.getElementById('analyzeSloBtn').disabled = !e.target.value;
 });
+
+function displaySurvey(){
+  window.open('/survey/download','_blank','width=1100,height=800,resizable=yes');
+}
+function analyzeSurvey(){
+  window.open('/survey/analyze','_blank','width=1300,height=900,resizable=yes');
+}
 </script>
 
 </body></html>
@@ -591,6 +637,9 @@ def login():
         pw   = request.form.get("password", "")
         if USERS.get(user) == pw:
             session["user"] = user
+            # Graduate Survey flow
+            if user == "Graduate Survey":
+                return redirect("/survey/form")
 
             # ───── redirect faculty straight to the mounted app ─────
             if user != "MECE Admin":                       # faculty
@@ -752,13 +801,7 @@ def analyze_course():
     # composite label stored in the dataframe
     df["pi_bl"] = df["pi"].apply(short_pi) + " (" + df["blooms_level"] + ")"
 
-    model = smf.mixedlm(
-        "attain ~ semester_idx",  # fixed slope = improvement / term
-        data=df,
-        groups="sem_short"  # one random intercept per semester
-    ).fit(method="lbfgs")
-
-    print(model.summary())  # slope β₁ & its p-value
+    #print(model.summary())  # slope β₁ & its p-value
 
     # ---- build the ordered list of rows for pivot-2 ----------------------
     combo_order = []
@@ -803,23 +846,47 @@ def analyze_course():
     )
 
     # ─── 3.  fit mixed-effects model  (NEW)  ────────────────────────────
-    lmm = smf.mixedlm(
-        'attain ~ semester_idx',  # fixed slope
-        data=df,
-        groups='sem_short'  # random intercept per semester
-    ).fit(method='lbfgs')
-    u = pd.Series({k: v.values[0] for k, v in lmm.random_effects.items()}) \
-        .sort_index()
+    # ─── 3.  fit mixed-effects model  ───────────────────────────────
+    try:  # NEW ◀
+        lmm = smf.mixedlm(
+            "attain ~ semester_idx",
+            data=df,
+            groups="sem_short"
+        ).fit(method="lbfgs")
+    except (np.linalg.LinAlgError, ValueError):  # NEW ◀
+        # fallback when matrix is singular (e.g. only one semester)
+        X = sm.add_constant(df["semester_idx"])
+        lmm = sm.OLS(df["attain"], X).fit()
+        lmm.random_effects = {}  # no baselines
 
-    low, high = u.min(), u.max()
-    if low < 0 < high:  # data on both sides of zero
-        vmin, vcenter, vmax = low, 0, high
-    else:  # all positive OR all negative
-        vmin, vmax = low, high
-        vcenter = 0.5 * (vmin + vmax)  # midpoint
-    divnorm = colors.TwoSlopeNorm(vcenter=vcenter, vmin=vmin, vmax=vmax)
-    cmap = plt.cm.RdYlGn
+    # ─── coloured (or grey) dots for Plot 4 ─────────────────────────────
+    if lmm.random_effects:
+        u = pd.Series({k: v.values[0] for k, v in lmm.random_effects.items()}) \
+            .sort_index()
+        lo, hi = u.min(), u.max()
 
+        # 1 ▸ identical baselines  → grey
+        if np.isclose(lo, hi, atol=1e-9, rtol=1e-6):
+            colour_fn = lambda s: "#7f7f7f"
+
+        else:
+            # 2 ▸ get candidate vmin / vcenter / vmax
+            if lo < 0 < hi:
+                vmin, vcenter, vmax = lo, 0.0, hi
+            else:  # all positive OR all negative
+                vmin, vmax = lo, hi
+                vcenter = 0.5 * (vmin + vmax)
+
+            # 3 ▸ final monotonicity check
+            if not (vmin < vcenter < vmax):
+                colour_fn = lambda s: "#7f7f7f"  # fallback to grey
+            else:
+                divnorm = colors.TwoSlopeNorm(vcenter=vcenter,
+                                              vmin=vmin, vmax=vmax)
+                cmap = plt.cm.RdYlGn
+                colour_fn = lambda s: cmap(divnorm(u.get(s, 0)))
+    else:
+        colour_fn = lambda s: "#7f7f7f"  # OLS-only fallback
 
     # ─── 4.  build g = tidy table for plotting  (NEW)  ──────────────────
     g = (df.groupby(['sem_short', 'semester_idx'])
@@ -827,30 +894,22 @@ def analyze_course():
          .reset_index())
 
     g = g.sort_values('semester_idx')  # ensure ascending x
-   # pred = lmm.get_prediction(g, exog=dict(semester_idx=g.semester_idx))
-   # g['fit'] = pred.predicted_mean
-   # g[['low', 'high']] = pred.conf_int()
-
-    g['fit'] = lmm.predict(exog=dict(semester_idx=g.semester_idx))
-
-    # design matrix for the fixed effects (Intercept and semester_idx)
+    # ---- design matrix for any model (const + semester_idx) --------------
     X = pd.DataFrame({
-        'Intercept': 1.0,
-        'semester_idx': g.semester_idx
+        "Intercept" if "Intercept" in lmm.params.index else "const": 1.0,
+        "semester_idx": g.semester_idx
     })
 
-    # covariance matrix of the two fixed-effect estimates
-    V = lmm.cov_params().loc[['Intercept', 'semester_idx'],
-    ['Intercept', 'semester_idx']]
+    # fitted mean and standard error
+    g["fit"] = lmm.predict(X)  # works for both MixedLM and OLS
 
-    # standard error for each fitted point
+    V = lmm.cov_params().loc[X.columns, X.columns]  # 2×2 covariance
     se = np.sqrt((X @ V * X).sum(axis=1))
 
     from scipy.stats import t
-    crit = t.ppf(0.975, df=lmm.df_resid)  # 95 % two-sided
-
-    g['low'] = g['fit'] - crit * se
-    g['high'] = g['fit'] + crit * se
+    crit = t.ppf(0.975, df=lmm.df_resid)
+    g["low"] = g["fit"] - crit * se
+    g["high"] = g["fit"] + crit * se
 
     # -----------------  PIVOT #1 : rows = semester ----------------------
     # -----------------  PIVOT #1 : rows = semester --------------------
@@ -1010,8 +1069,6 @@ def analyze_course():
     ax3.set_ylim(0, 105)
     ax3.spines[["right", "top"]].set_visible(False)
 
-
-
     # --- annotate p‑value and effect size ---
     txt = ""
     if kw_p is not None:
@@ -1062,15 +1119,11 @@ def analyze_course():
     # ------------------------------------------------------------
    # fig.tight_layout(rect=[0, 0, 1, 1])  # leave 20 % for legend
 
-    divnorm = colors.TwoSlopeNorm(vcenter=0, vmin=u.min(), vmax=u.max())
-    cmap = plt.cm.RdYlGn
-
     # inside the loop that scatters the dots on ax4  (replace the old line)
-    colours = [cmap(divnorm(u[s]))
-               for s in g.semester_idx.map(lambda i: sem_order[i])]
-
+    colours = [colour_fn(s) for s in g.semester_idx.map(lambda i: sem_order[i])]
     ax4.scatter(g.semester_idx, g.mean_attain,
                 s=80, c=colours, edgecolor="#333", label="Observed")
+
     ax4.plot(g.semester_idx, g.fit, lw=2.2, label='Model trend')
     ax4.fill_between(g.semester_idx, g.low, g.high, alpha=.18)
     ax4.axhline(70, ls='--', color='red', lw=.9, label='ABET 70 % target')
@@ -1141,23 +1194,69 @@ def analyze_course():
 @parent.route("/analyze_slo")
 @login_required
 def analyze_slo():
-    from importlib import import_module  # ← 1
-    DB_NAME = import_module("ABET_Data_Rev1").DB_NAME  # ← 2
+    # ── ensure NLTK data (punkt + punkt_tab + stopwords) is present ──────────
+    # ── make sure the 3 tiny NLTK datasets rake-nltk needs are present ─────────
+    import pathlib, nltk
+
+    for pkg, res in [
+        ("punkt", "tokenizers/punkt"),  # sentence tokenizer
+        ("punkt_tab", "tokenizers/punkt_tab"),  # …its tables
+        ("stopwords", "corpora/stopwords")]:  # RAKE’s stop-word list
+        try:
+            nltk.data.find(res)  # already on disk?
+        except LookupError:
+            nltk.download(pkg, quiet=True,  # grab it once
+                          download_dir=str(pathlib.Path.home() / "nltk_data"))
+
+    from ABET_Data_Rev1 import get_conn
     slo = request.args.get("slo","").strip()
     if not slo:
         return "<script>alert('Select an SLO first');window.close();</script>"
 
-    with sqlite3.connect(DB_NAME) as conn:
-        q = """
-            SELECT course, pi, blooms_level, semester,
-                   expert + practitioner AS attain
-              FROM abet_entries
-             WHERE slo = ?
+    with get_conn() as conn:
+        # ─── grab the numeric data that drives the plots ─────────────────
+        q_num = """
+                SELECT course, pi, blooms_level, semester,
+                       expert + practitioner AS attain
+                  FROM abet_entries
+                 WHERE slo = ?
         """
-        df = pd.read_sql_query(q, conn, params=(slo,))
+        df = pd.read_sql_query(q_num, conn, params=(slo,))
+
+        # ─── NEW: grab the two narrative columns too ─────────────────────
+        q_nar = """
+                SELECT course, semester, pi, blooms_level,
+                       explanation AS "Why this tool & Bloom level?",
+                       observations AS "Instructor observations"
+                  FROM abet_entries
+                 WHERE slo = ?
+                ORDER BY course, semester, pi
+        """
+        nar_df = pd.read_sql_query(q_nar, conn, params=(slo,))
+        nar_table = nar_df.copy()  # <- keep an unfiltered copy for the HTML table
+
 
     if df.empty:
         return "<script>alert('No data for this SLO');window.close();</script>"
+
+    from rake_nltk import Rake
+    _rake = Rake(max_length=3)  # up to 3-word key-phrases
+
+    def ai_tag(text: str) -> str | None:
+        """
+        Return the highest-scoring RAKE key-phrase (≤ 3 words, Title-case).
+        Fallback: None if nothing found.
+        """
+        if not text or len(text) < 12:  # too short
+            return None
+        _rake.extract_keywords_from_text(text)
+        phrases = _rake.get_ranked_phrases()
+        if not phrases:
+            return None
+        tag = phrases[0].title()  # best phrase
+        if len(tag.split()) == 1:  # ← NEW: verb alone? skip it
+            return None
+        return tag[:35]  # truncate long ones
 
     # ─────────────────────  DATA CLEAN-UP  ──────────────────────────────
     df["pi"] = df["pi"].astype(str).str.strip()
@@ -1167,6 +1266,15 @@ def analyze_slo():
     orderB = ["Remember","Understand","Apply","Analyze","Evaluate","Create"]
     df["blooms_level"] = pd.Categorical(df["blooms_level"],
                                         categories=orderB, ordered=True)
+
+    # helper: "PI-1: Able to …" → "PI-1"
+    def short_pi(txt: str) -> str:
+        return txt.split(":")[0].strip()
+
+    df["pi_bl"] = (
+            df["pi"].apply(short_pi) +
+            " (" + df["blooms_level"].astype(str) + ")"  # ← cast to str
+    )
 
     # semester label helpers ── reuse the course-level versions
     def short_sem(sem: str) -> str:
@@ -1187,51 +1295,265 @@ def analyze_slo():
     df["sem_short"] = df["semester"].apply(short_sem)
 
     # ─────────────────────  FIGURE  ─────────────────────────────────────
+    # ─────────────────────  FIGURE  (4 panels)  ────────────────────────
     plt.close("all")
-    fig, (axA, axB, axC) = plt.subplots(
-        nrows=3, figsize=(9, 11), dpi=150,
-        gridspec_kw=dict(hspace=0.65, height_ratios=[1, 1, 1.25])
+    fig, (axA, axB, axC, axD) = plt.subplots(
+        nrows=4,
+        figsize=(9.5, 14.8),  # a bit taller for the 4th plot
+        dpi=150,
+        gridspec_kw=dict(
+            hspace=0.72,
+            height_ratios=[1.05, 1.05, 1.3, 1.6]
+        )
     )
 
     # === A ░░ Course-wise attainment bar-chart ░░ ======================
-    course_mean = (
-        df.groupby("course")["attain"].mean()
-          .sort_values(ascending=False)
+    # === A ░░ Course-wise attainment bar-chart ░░ ======================
+    crit95 = 1.96  # two-sided 95 % z
+    course_stats = (
+        df.groupby("course")["attain"]
+        .agg(mean="mean", std="std", n="count")
     )
-    axA.barh(course_mean.index, course_mean.values, color="#4d9078")
+    course_stats["se"] = course_stats["std"] / np.sqrt(course_stats["n"])
+    course_stats["hi"] = course_stats["mean"] + crit95 * course_stats["se"]
+
+    # sort by mean descending so best course on top
+    course_stats = course_stats.sort_values("mean", ascending=False)
+
+    # colour logic
+    def pick_colour(row):
+        good = (row["mean"] >= 70) or (row["hi"] >= 70)
+        return "#4d9078" if good else "#c62828"  # green / red
+
+    #colours = course_stats.apply(pick_colour, axis=1)
+    # colour logic  (mean ≥ 70 → green, else red)
+    colours = np.where(course_stats["mean"] >= 70, "#4d9078", "#c62828")
+
+    ypos = np.arange(len(course_stats))  # 0,1,2,…
+
+    axA.barh(
+        ypos, course_stats["mean"],
+        xerr=crit95 * course_stats["se"],
+        color=colours, height=0.6,
+        edgecolor="#333", linewidth=.6, capsize=4
+    )
+
     axA.axvline(70, ls="--", color="red", lw=1)
+    axA.set_yticks(ypos)
+    axA.set_yticklabels(course_stats.index)
     axA.set_xlabel("% Expert + Practitioner")
-    axA.set_title(f"SLO { slo } – average attainment per course",
+    axA.set_title(f"{slo} – average attainment per course",
                   weight="bold", fontsize=12)
-    for y,v in enumerate(course_mean.values):
-        axA.text(v+1, y, f"{v:.0f}", va="center", fontsize=9)
-    axA.invert_yaxis()                    # best course on top
-    axA.spines[["right","top"]].set_visible(False)
+
+    for y, v in zip(ypos, course_stats["mean"]):
+        axA.text(v + 1.5, y, f"{v:.0f}", va="center", fontsize=9)
+
+    axA.invert_yaxis()  # best course on top
+    axA.spines[["right", "top"]].set_visible(False)
 
     # === B ░░ Bloom-level box-plot across ALL courses ░░ ===============
+    # === B ░░ Bloom-level box-plot across ALL courses ░░ ===============
+    # NOTE: pass observed=False to silence the pandas FutureWarning
     grouped = [g["attain"].values for _, g in
-               df.groupby("blooms_level") if len(g)]
-    ticks   = [lvl for lvl in orderB if lvl in df.blooms_level.unique()]
+               df.groupby("blooms_level", observed=False) if len(g)]
+    ticks = [lvl for lvl in orderB if lvl in df.blooms_level.unique()]
     axB.boxplot(grouped, patch_artist=True,
                 boxprops=dict(facecolor="#8DB9CA", alpha=.75),
-                medianprops=dict(color="firebrick",lw=1))
+                medianprops=dict(color="firebrick", lw=1))
     axB.axhline(70, ls="--", color="red", lw=.9)
     axB.set_xticklabels(ticks, rotation=0, fontsize=9)
     axB.set_ylabel("% Expert + Practitioner")
-    axB.set_title(f"SLO { slo } – Bloom-level distribution (all courses)",
+    axB.set_title(f"SLO {slo} – Bloom-level distribution (all courses)",
                   weight="bold", fontsize=12)
-    axB.spines[["right","top"]].set_visible(False)
+    axB.spines[["right", "top"]].set_visible(False)
+
+    # --- Kruskal–Wallis (all Bloom levels) + Cliff’s Δ (Analyze vs others) ---
+    import scipy.stats as ss
+
+    def safe_kruskal(groups):
+        """Return p-value or None if groups are insufficient or constant."""
+        vals = [np.asarray(g, float) for g in groups if len(g)]
+        if len(vals) < 2:
+            return None
+        allv = np.concatenate(vals)
+        # if every number is identical → KW is undefined in SciPy
+        if allv.size and np.allclose(allv, allv[0]):
+            return None
+        try:
+            return ss.kruskal(*vals).pvalue
+        except ValueError:
+            return None
+
+    def safe_cliffs_delta(a, b):
+        """Rank-biserial effect size via Mann–Whitney U; None if not computable."""
+        a = np.asarray(a, float);
+        b = np.asarray(b, float)
+        if a.size == 0 or b.size == 0:
+            return None
+        # if all values identical in both samples, Δ = 0 (no dominance)
+        if np.allclose(a, a[0]) and np.allclose(b, b[0]) and np.isclose(a[0], b[0]):
+            return 0.0
+        try:
+            U = ss.mannwhitneyu(a, b, alternative="two-sided").statistic
+            return (2 * U) / (a.size * b.size) - 1
+        except ValueError:
+            return None
+
+    present = [lvl for lvl in orderB if lvl in df.blooms_level.unique()]
+    grouped_vals = [df.loc[df.blooms_level == lvl, "attain"].values
+                    for lvl in present]
+    kw_p = safe_kruskal(grouped_vals)
+
+    analyze = df.loc[df.blooms_level == "Analyze", "attain"].values
+    others = df.loc[df.blooms_level != "Analyze", "attain"].values
+    delta = safe_cliffs_delta(analyze, others)
+
+    # --- annotate (show 'n/a' for constant/insufficient cases) ---
+    lines = []
+    lines.append(f"Kruskal-Wallis p = {kw_p:.3f}" if kw_p is not None else "Kruskal-Wallis: n/a")
+    lines.append(f"Cliff's Δ (Analyze vs others) = {delta:+.2f}"
+                 if delta is not None else "Cliff's Δ: n/a")
+    axB.text(0.02, 0.06, "\n".join(lines),
+             transform=axB.transAxes,
+             ha="left", va="bottom",
+             fontsize=9, fontstyle="italic",
+             bbox=dict(boxstyle="round,pad=0.30", fc="#f5f5f5", ec="none", alpha=.85))
 
     # === C ░░ semester trend across ALL courses ░░ ======================
     sem_mean = (df.groupby("sem_short")["attain"]
                 .mean()
                 .sort_index(key=lambda s: s.map(sem_key)))
 
+    # ─── intervention arrows with distilled tag ─────────────────────────
+    import re, string
+    STOP = {"a", "an", "the", "of", "to", "for", "on", "in", "with", "by", "and",
+            "all", "every", "each", "this", "that", "those", "these", "have", "has"}
+    VERBS = ("added|implemented|introduced|redesigned|revised|flipped|"
+             "launched|adopted|created|deployed|removed|expanded|updated")
+    # list of words that signal a course intervention
+    KEYWORDS = {
+        "added", "introduced", "implemented", "redesigned", "revised",
+        "flipped", "created", "launched", "updated", "expanded",
+        "removed", "action plan", "curriculum change", "intervention"
+    }
+    KEYWORDS |= {"lecture", "quiz", "rubric", "worksheet", "project",
+                 "quizlet", "video", "tutorial"}
+    verb_pat = re.compile(rf"\b({VERBS})\b", flags=re.I)
+
+    def tag_clear(text: str) -> str | None:
+        if not text:
+            return None
+        m = verb_pat.search(text.lower())
+        if not m:
+            return None
+
+        verb = m.group(1).capitalize()
+        tail = re.split(r"[.;:\n]", text[m.end():], maxsplit=1)[0]
+
+        words = [w.strip(string.punctuation) for w in tail.split()]
+        keep = [w.title() for w in words
+                if w.lower() not in STOP and len(w) > 2][:2]
+
+        return f"{verb} {' '.join(keep)}" if keep else verb
+
+    import re, string
+
+    VERBS = ("added|introduced|implemented|redesigned|revised|flipped|"
+             "created|adopted|launched|updated|expanded|removed|deployed")
+    verb_re = re.compile(rf"\b({VERBS})\b", re.I)
+
+    STOP = {"a", "an", "the", "of", "to", "for", "in", "on", "with", "by", "and",
+            "all", "each", "every", "this", "that", "these", "those",
+            "have", "has", "was", "were", "is", "are", "be", "been"}
+
+    FILLER = {"lecture", "lectures", "step", "steps", "material", "materials",
+              "content", "activity", "activities", "worksheet", "worksheets",
+              "lab", "labs", "rubric", "rubrics", "project", "projects",
+              "assignment", "assignments", "quiz", "quizzes", "homework", "hw"}
+
+    def short_tag(txt: str) -> str | None:
+        """
+        Return 'Verb Word Word' (≤ 3 words) or None if nothing descriptive.
+        """
+        if not txt:
+            return None
+
+        m = verb_re.search(txt.lower())
+        if not m:
+            return None
+
+        verb = m.group(1).capitalize()
+        tail = txt[m.end():]
+
+        def pick(max_keep: int) -> list[str]:
+            words = [w.strip(string.punctuation) for w in tail.split()]
+            return [w.title() for w in words
+                    if w.lower() not in STOP and len(w) > 2][:max_keep]
+
+        keep = pick(3)  # try up to 3 words first
+        if not keep:  # if all were filler…
+            keep = [w.title() for w in tail.split()  # keep *any* word
+                    if w.lower() not in STOP][:2]
+
+        if not keep:
+            return None  # nothing useful → skip
+
+        return " ".join([verb] + keep)
+
+    # --------------------------------------------------------------------
+    # ---- build tags ONLY for arrows; do not mutate nar_table ----
+    nar_arrows = nar_df.copy()
+    nar_arrows["sem_short"] = nar_arrows["semester"].apply(short_sem)
+    nar_arrows["tag"] = (
+            nar_arrows["Instructor observations"].fillna("") + " " +
+            nar_arrows["Why this tool & Bloom level?"].fillna("")
+    ).apply(ai_tag)
+
+    ACTION_VERBS = """
+        Added Introduced Required Mandated Repeated Warned Assigned Allowed
+        Recorded Documented Planned Will plan Encouraged Improved Enhanced
+        Strengthened Exported Shared Aligned Standardized Calibrated Expanded
+        Embedded Integrated Piloted Monitored Tracked Institutionalized
+        Implemented Refined Revised Modified Hosted Discussed Measured Collected
+        Surveyed Practiced
+    """.lower().split()
+    base = {v.rstrip("ed").rstrip("d") for v in ACTION_VERBS}
+    GOOD_VERBS = set(ACTION_VERBS) | base
+
+    first = nar_arrows["tag"].str.split().str[0].str.lower()
+    mask = nar_arrows["tag"].notna() & first.isin(GOOD_VERBS)
+    nar_arrows = nar_arrows[mask]
+
+    tags_by_sem = (nar_arrows[nar_arrows["tag"].notna()]
+                   .groupby("sem_short")["tag"]
+                   .apply(list)
+                   .to_dict())
+
+    xpos = {s: i for i, s in enumerate(sem_mean.index)}
+
+    for sem, tags in tags_by_sem.items():
+        if sem not in xpos:
+            continue
+        x, y = xpos[sem], sem_mean[sem]
+
+        # arrow
+        axC.annotate("", xy=(x, y), xytext=(x, y - 6),
+                     arrowprops=dict(arrowstyle="->", lw=1.1,
+                                     color="#9146ff", shrinkA=0, shrinkB=0))
+
+        # label: no wrap; show up to two tags on separate micro-lines
+        label = "\n".join(tags[:2])
+        #axC.text(x + 0.15, y - 6.1, label,
+        #         fontsize=6, color="#9146ff",
+        #         ha="left", va="top", linespacing=0.9)
+
     sem_idx = np.arange(len(sem_mean))  # 0,1,2,… in chronological order
 
     # ─── fit simple OLS:  y = β0 + β1·semester_idx  ──────────────────────
     X = sm.add_constant(sem_idx)  # adds the intercept column
     ols = sm.OLS(sem_mean.values, X).fit()
+    slope = float(ols.params[1]) if len(ols.params) > 1 else 0.0  # NEW
+    pval = float(ols.pvalues[1]) if len(ols.params) > 1 else 1.0  # NEW
 
     pred = ols.get_prediction(X)
     low95, high95 = pred.conf_int().T  # two 1-D arrays
@@ -1242,7 +1564,8 @@ def analyze_slo():
     axC.plot(sem_mean.index, ols.fittedvalues,
              lw=2.2, color="#2d7b82", label="Trend line")
     axC.fill_between(sem_mean.index, low95, high95,
-                     color="#2d7b82", alpha=.20, label="95 % CI")
+                     color="#2d7b82", alpha=.15, label="95 % CI")
+    axC.legend(fontsize=8, loc="upper left")
     axC.axhline(70, ls="--", color="red", lw=1, label="ABET 70 %")
 
     # numeric labels on the dots
@@ -1250,13 +1573,15 @@ def analyze_slo():
         axC.text(x, y + 1.2, f"{y:.0f}", ha="center", fontsize=9)
 
     axC.set_ylabel("% Expert + Practitioner")
-    axC.set_title(f"SLO {slo} – overall attainment per semester",
+    axC.set_title(f"{slo} – overall attainment per semester",
                   weight="bold", fontsize=12)
-    axC.set_xticklabels(sem_mean.index, rotation=0, fontsize=9)
+    axC.set_xticks(range(len(sem_mean)))
+    axC.set_xticklabels(sem_mean.index, rotation=0, ha="right", fontsize=9)
+
     axC.spines[["right", "top"]].set_visible(False)
 
     # slope + p-value annotation (optional but handy)
-    slope, pval = ols.params[1], ols.pvalues[1]
+    #slope, pval = ols.params[1], ols.pvalues[1]
     axC.text(0.02, 0.07,
              f"$\\beta_1$ = {slope:+.2f} pp/term\n$p$ = {pval:.3f}",
              transform=axC.transAxes, ha="left", va="bottom", fontsize=9,
@@ -1268,6 +1593,93 @@ def analyze_slo():
     for x, y in zip(sem_mean.index, sem_mean.values):
         axC.text(x, y + 1.2, f"{y:.0f}", ha="center", fontsize=9)
 
+    # === D ░░ PI-wise semester trend (NEW) ░░ =========================
+    # 1  pivot to get a matrix   rows = PI-tag,  cols = semester
+    # ---- PI-wise semester trend ------------------------------------------
+    # === D ░░ PI-wise semester trend  (with mixed-effects lines) ░░ ========
+    # === D ░░ PI-wise mixed-effects trends – separated clusters ░░ ========
+    df["pi_tag"] = df["pi"].apply(short_pi)
+    sem_cols = sem_mean.index  # ordered semesters
+
+    pivot_pi = (df.groupby(["pi_tag", "sem_short"])["attain"]
+                .mean()
+                .unstack()) \
+        .reindex(columns=sem_cols, fill_value=np.nan) \
+        .sort_index()
+
+    n_pi = len(pivot_pi)
+    n_sem = len(sem_cols)
+    gap = 1  # blank column between clusters
+    cmap = plt.colormaps.get_cmap("tab20").resampled(n_pi)
+
+    # helper to centre the PI label
+    cluster_center = lambda i: i * (n_sem + gap) + 0.5 * (n_sem - 1)
+
+    for i, (pi, _) in enumerate(pivot_pi.iterrows()):
+
+        sub = df[df["pi_tag"] == pi].copy()
+        # map semester → 0…n_sem-1 inside its own cluster
+        sub["intra_idx"] = sub["sem_short"].map({s: j for j, s in enumerate(sem_cols)})
+        sub["x"] = sub["intra_idx"] + i * (n_sem + gap)
+
+        # ── model fit (same fallback logic) ──────────────────────────────
+        try:
+            # ── Mixed-effects: works if ≥ 2 semesters ──────────────────────
+            mdl = smf.mixedlm("attain ~ intra_idx", data=sub, groups="sem_short") \
+                .fit(method="lbfgs")
+            fe = mdl.fe_params  # β₀, β₁
+            cov = mdl.cov_params().loc[["Intercept", "intra_idx"],  # 2×2
+            ["Intercept", "intra_idx"]]
+
+        except Exception:  # singular, 1-semester PI, etc. → fall back to OLS
+            mdl = sm.OLS(sub["attain"], sm.add_constant(sub["intra_idx"])).fit()
+
+            # normalise names so the rest of the code is agnostic
+            fe = mdl.params.rename({"const": "Intercept"})
+            cov = mdl.cov_params()
+            cov.index = cov.index.str.replace("const", "Intercept")
+            cov.columns = cov.columns.str.replace("const", "Intercept")
+            cov = cov.loc[["Intercept", "intra_idx"], ["Intercept", "intra_idx"]]
+
+        # common helper for the 95 % CI
+        seX = lambda x: np.sqrt([1, x] @ cov @ [1, x])
+
+        x_rel = np.arange(n_sem)
+        x_abs = x_rel + i * (n_sem + gap)
+        fit = fe["Intercept"] + fe["intra_idx"] * x_rel
+        ci95 = 1.96 * np.vectorize(seX)(x_rel)
+
+        # raw means per semester
+        axD.plot(x_abs, pivot_pi.loc[pi].values, "o",
+                 ms=5, color=cmap(i), alpha=.8)
+
+        # mixed-effects line + ribbon
+        axD.plot(x_abs, fit, lw=2, color=cmap(i))
+        axD.fill_between(x_abs, fit - ci95, fit + ci95, color=cmap(i), alpha=.10)
+
+        # PI label centred over its cluster
+        axD.text(cluster_center(i), axD.get_ylim()[1] * 0.97, pi,
+                 ha="center", va="top", fontsize=9, weight="bold")
+
+    # cosmetics ---------------------------------------------------------------
+    axD.axhline(70, ls="--", color="red", lw=1)
+    axD.set_ylabel("% Expert + Practitioner")
+    axD.set_title(f"SLO {slo} – PI-wise mixed-effects trends",
+                  weight="bold", fontsize=12)
+
+    # hide x-tick labels; show generic “semester” under each cluster
+    # ── x-axis: show real semester tags under every cluster  --------------
+    xticks = []
+    xlabels = []
+    for i in range(n_pi):
+        for j, sem in enumerate(sem_cols):
+            xticks.append(j + i * (n_sem + gap))
+            xlabels.append(sem)
+
+    axD.set_xticks(xticks)
+    axD.set_xticklabels(xlabels, rotation=30, ha="right", fontsize=8)
+    axD.spines[["right", "top"]].set_visible(False)
+
     fig.tight_layout()
 
     # ---------- embed to HTML ------------------------------------------
@@ -1275,13 +1687,709 @@ def analyze_slo():
     fig.savefig(buf, format="png")
     img64 = base64.b64encode(buf.getvalue()).decode()
 
+    # ----------------  HTML table for the narratives  -----------------
+    table_css = (
+        "border-collapse:collapse;margin:1.4rem auto;width:96%;"
+        "font-family:Poppins,sans-serif;font-size:.9rem"
+    )
+    th_css = ("background:#003638;color:#fff;padding:.5rem .6rem;"
+              "border:1px solid #ddd;")
+    td_css = ("padding:.45rem .55rem;border:1px solid #ddd;")
+
+    # Fill empties to keep the table readable
+    nar_table = nar_table.fillna("—")
+
+    html_table = nar_table.to_html(index=False, escape=False,
+                                   classes="nar",
+                                   table_id="nar",
+                                   border=0)
+
+    # patch in-line styles
+    html_table = (
+        html_table
+        .replace('<table border="0" class="nar" id="nar">',
+                 f'<table style="{table_css}">')
+        .replace('<th>', f'<th style="{th_css}">')
+        .replace('<td>', f'<td style="{td_css}">')
+    )
+
     return f"""
     <!doctype html><html><head><title>SLO {slo} analysis</title></head>
-    <body style="margin:0;display:flex;justify-content:center;align-items:center;
-                 height:100vh;background:#f7f9fc">
+    <body style="margin:0;background:#f7f9fc;font-family:Poppins,sans-serif">
+
+    <div style="display:flex;flex-direction:column;align-items:center;padding:1.5rem">
       <img src="data:image/png;base64,{img64}"
-           style="max-width:90%;height:auto;box-shadow:0 4px 18px rgba(0,0,0,.15);
-                  border-radius:8px">
+           style="max-width:90%;height:auto;
+                  box-shadow:0 4px 18px rgba(0,0,0,.15);border-radius:8px">
+      {html_table}
+    </div>
+
+    </body></html>
+    """
+from flask import jsonify
+import json
+
+@parent.route("/survey/start", methods=["GET","POST"])
+def survey_start():
+    # No faculty login required; Grad Survey is separate from /abet
+    if request.method == "POST":
+        session["grad_student_name"] = request.form.get("student_name","").strip()
+        session["grad_year"] = request.form.get("year_graduated","").strip()
+        session["grad_job"]  = request.form.get("job_plan","").strip()
+        if not session["grad_student_name"] or not session["grad_year"]:
+            return render_template_string(SURVEY_START_HTML)
+        return redirect("/survey/form")
+    return render_template_string(SURVEY_START_HTML)
+
+# ------------------ Page 2: the full survey ------------------
+SURVEY_FORM_HTML = r"""
+<!doctype html><html><head>
+<meta charset="utf-8"><title>Graduate Survey – Questionnaire</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* --- shared header/footer styles (copied from LOGIN/ADMIN) --- */
+.site-hdr{
+  width:100%;
+  background:linear-gradient(90deg,#003638 0%,#005158 50%,#00736f 100%);
+  box-shadow:0 4px 12px rgba(0,0,0,.08);
+  padding:2.2rem 1rem 2rem;
+  display:flex;justify-content:center;
+  border-top-left-radius:12px;border-top-right-radius:12px;
+}
+.hdr-inner{text-align:center;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.35)}
+.hdr-title{
+  font-size:1.9rem;font-weight:700;letter-spacing:.02rem;
+  margin-bottom:.35rem;
+}
+.hdr-subtitle{
+  font-size:1.15rem;font-weight:500;letter-spacing:.03rem;
+  opacity:.93;
+}
+footer.copyright{
+  width:100%;margin-top:2.5rem;padding:.9rem 0;
+  background:linear-gradient(90deg,#003638 0%,#005158 100%);
+  color:#fff;font-size:.9rem;font-weight:600;letter-spacing:.03rem;text-align:center;
+  box-shadow:0 -4px 10px rgba(0,0,0,.05);
+  border-bottom-left-radius:12px;border-bottom-right-radius:12px;
+}
+*{box-sizing:border-box;font-family:Poppins,sans-serif}
+body{margin:0;background:#f7f9fc;color:#252525}
+.wrap{max-width:960px;margin:2rem auto;background:#fff;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.10);padding:1.2rem 1.2rem 1.6rem}
+h1{font-size:1.35rem;margin:.3rem 0 1rem;color:#003638}
+h2{font-size:1.05rem;margin:1.1rem 0 .4rem;color:#003638}
+.field{margin:.65rem 0}
+label.bold{font-weight:600}
+.row{display:flex;flex-wrap:wrap;gap:1rem}
+input[type=text], input[type=number], textarea, select{width:100%;padding:.6rem .7rem;border:1px solid #ccc;border-radius:8px;background:#fafafa}
+textarea{min-height:90px}
+.block{display:block;margin:.25rem 0}
+small.hint{display:block;color:#666;margin-top:.15rem}
+button{margin-top:1rem;width:100%;padding:.8rem 1rem;border:none;border-radius:10px;background:#ee7f2f;color:#fff;font-weight:700;cursor:pointer}
+.card{background:#fdfdfd;padding:0.8rem 0.9rem;border:1px solid #eee;border-radius:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+table.lik{border-collapse:collapse;width:100%;font-size:.92rem}
+table.lik th, table.lik td{border:1px solid #e0e0e0;padding:.45rem .5rem;text-align:center}
+table.lik th:first-child, table.lik td:first-child{text-align:left;font-weight:600}
+</style></head><body>
+<header class="site-hdr">
+  <div class="hdr-inner">
+    <div class="hdr-title">UTRGV Department of Mechanical Engineering</div>
+    <div class="hdr-subtitle">ABET Graduate Survey</div>
+  </div>
+</header>
+<div class="wrap">
+  <h1>Graduate Survey – Questionnaire</h1>
+  <form method="post">
+
+    <!-- Identifiers from page 1 -->
+    <div class="grid2">
+      <div class="field"><label class="bold">1. Last Name</label><input name="q1_last_name"></div>
+      <div class="field"><label class="bold">2. First Name</label><input name="q2_first_name"></div>
+    </div>
+    <div class="field"><label class="bold">3. Permanent Mailing Address</label><input name="q3_address"></div>
+    <div class="grid2">
+      <div class="field"><label class="bold">4. Phone (post-grad)</label><input name="q4_phone"></div>
+      <div class="field"><label class="bold">5. Non-UTRGV Email</label><input name="q5_email"></div>
+    </div>
+
+    <div class="card">
+      <h2>Time to degree & GPA</h2>
+      <div class="field">
+        <label class="bold">6. How many semesters (not including summers) did it take to graduate?</label>
+        {% for opt in ["More than 12","12","11","10","9","8","7","6","5","4","Less than 4"] %}
+          <label class="block"><input type="radio" name="q6_semesters" value="{{opt}}"> {{opt}} semesters</label>
+        {% endfor %}
+      </div>
+      <div class="field">
+        <label class="bold">7. UTRGV GPA</label>
+        {% for opt in ["3.5 or higher","3.0–3.5","2.7–3.0","2.5–2.7","Less than 2.5"] %}
+          <label class="block"><input type="radio" name="q7_gpa" value="{{opt}}"> {{opt}}</label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Page 2: orgs / leadership / conferences -->
+    <div class="card">
+      <h2>Organizations, leadership, conferences</h2>
+      <div class="field">
+        <label class="bold">8. Involved in any CECS student organizations?</label>
+        <label class="block"><input type="radio" name="q8_orgs_any" value="Yes"> Yes</label>
+        <label class="block"><input type="radio" name="q8_orgs_any" value="No"> No</label>
+      </div>
+      <div class="field">
+        <label class="bold">9. How many organizations?</label>
+        {% for opt in ["0","1","2","3","4","More than 4"] %}
+          <label class="block"><input type="radio" name="q9_orgs_count" value="{{opt}}"> {{opt}}</label>
+        {% endfor %}
+      </div>
+      <div class="field">
+        <label class="bold">10. Which organizations?</label>
+        {% for club in [
+          "ACM","Aero Design","ASCE","ASME","Greenpower USA","Hack&Make","IEEE","MAES",
+          "Material Advantage","Rocket Launchers","SAE","SHPE","SME","SWE","Tau Beta Pi"
+        ] %}
+          <label class="block"><input type="checkbox" name="q10_orgs" value="{{club}}"> {{club}}</label>
+        {% endfor %}
+      </div>
+      <div class="field">
+        <label class="bold">11. Held a leadership role?</label>
+        <label class="block"><input type="radio" name="q11_lead" value="Yes"> Yes</label>
+        <label class="block"><input type="radio" name="q11_lead" value="No"> No</label>
+      </div>
+      <div class="field">
+        <label class="bold">12. Attended conferences for internships/co-ops?</label>
+        <label class="block"><input type="radio" name="q12_conf_any" value="Yes"> Yes</label>
+        <label class="block"><input type="radio" name="q12_conf_any" value="No"> No</label>
+      </div>
+      <div class="field">
+        <label class="bold">13. How many such conferences?</label>
+        {% for opt in ["1","2","3","More than 3"] %}
+          <label class="block"><input type="radio" name="q13_conf_count" value="{{opt}}"> {{opt}}</label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Page 3: internships / co-ops / research -->
+    <div class="card">
+      <h2>Internships, co-ops, research</h2>
+      <div class="field">
+        <label class="bold">14. Summer industry internship(s)?</label>
+        <label class="block"><input type="radio" name="q14_intern_any" value="Yes"> Yes</label>
+        <label class="block"><input type="radio" name="q14_intern_any" value="No"> No</label>
+      </div>
+      <div class="field">
+        <label class="bold">15. How many internships?</label>
+        {% for opt in ["1","2","3","More than 3"] %}
+          <label class="block"><input type="radio" name="q15_intern_count" value="{{opt}}"> {{opt}}</label>
+        {% endfor %}
+      </div>
+      <div class="field">
+        <label class="bold">16. Companies (internships)</label>
+        <textarea name="q16_intern_companies"></textarea>
+      </div>
+      <div class="field">
+        <label class="bold">17. Fall or spring co-op(s)?</label>
+        <label class="block"><input type="radio" name="q17_coop_any" value="Yes"> Yes</label>
+        <label class="block"><input type="radio" name="q17_coop_any" value="No"> No</label>
+      </div>
+      <div class="field">
+        <label class="bold">18. How many co-ops?</label>
+        {% for opt in ["1","2","3","More than 3"] %}
+          <label class="block"><input type="radio" name="q18_coop_count" value="{{opt}}"> {{opt}}</label>
+        {% endfor %}
+      </div>
+      <div class="field">
+        <label class="bold">19. Company(ies) (co-ops)</label>
+        <textarea name="q19_coop_companies"></textarea>
+      </div>
+      <div class="field">
+        <label class="bold">20. Research with faculty?</label>
+        {% for opt in ["Yes (MECE)","Yes (outside MECE)","No"] %}
+          <label class="block"><input type="radio" name="q20_research_any" value="{{opt}}"> {{opt}}</label>
+        {% endfor %}
+      </div>
+      <div class="field">
+        <label class="bold">21. Research faculty member(s)</label>
+        {% for fac in [
+            "Greg Acosta","Mataz Alcoutlabi","Rogelio Benitez","Lawrence Cano","Dumitru Caruntu",
+            "Isaac Choutapalli","Stephen Crown","Robert Freeman","Arturo Fuentes","Robert Jones",
+            "Karen Lozano","Javier Ortega","John Pemelton","Greg Potter","Maysam Pournik"
+        ] %}
+          <label class="block"><input type="checkbox" name="q21_research_faculty" value="{{fac}}"> {{fac}}</label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Page 4: work + plans -->
+    <div class="card">
+      <h2>Work & plans</h2>
+      <div class="field">
+        <label class="bold">24. Needed to work to continue school?</label>
+        <label class="block"><input type="radio" name="q24_need_work" value="Yes"> Yes</label>
+        <label class="block"><input type="radio" name="q24_need_work" value="No"> No</label>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label class="bold">25. Nature of work</label>
+          {% for opt in ["Part-time","Full-time"] %}
+            <label class="block"><input type="radio" name="q25_work_nature" value="{{opt}}"> {{opt}}</label>
+          {% endfor %}
+        </div>
+        <div class="field">
+          <label class="bold">26. Where</label>
+          {% for opt in ["On campus","Off campus"] %}
+            <label class="block"><input type="radio" name="q26_work_where" value="{{opt}}"> {{opt}}</label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="field">
+        <label class="bold">27. Type of on-campus job(s)</label>
+        {% for opt in ["Research assistant","Grader","Work-Study","Other"] %}
+          <label class="block"><input type="checkbox" name="q27_oncampus_type" value="{{opt}}"> {{opt}}</label>
+        {% endfor %}
+      </div>
+
+      <div class="field">
+        <label class="bold">32. Plans after graduation</label>
+        {% for opt in [
+          "Already have engineer job offer",
+          "Plan to work as engineer (no offers yet)",
+          "Have job offer not as an engineer",
+          "Do not plan to work as an engineer",
+          "Accepted into graduate program",
+          "Plan to apply to graduate school",
+          "Other"
+        ] %}
+          <label class="block"><input type="radio" name="q32_plans" value="{{opt}}"> {{opt}}</label>
+        {% endfor %}
+      </div>
+
+      <div class="field">
+        <label class="bold">33. How many job offers?</label>
+        {% for opt in ["1","2","3","More than 3"] %}
+          <label class="block"><input type="radio" name="q33_offers" value="{{opt}}"> {{opt}}</label>
+        {% endfor %}
+      </div>
+      <div class="field">
+        <label class="bold">34. Job offer details</label>
+        <small class="hint">Format: Company – Location – Salary (and sign-on if relevant)</small>
+        <textarea name="q34_offer_details"></textarea>
+      </div>
+
+      <div class="field">
+        <label class="bold">35. Have you applied for an engineering job?</label>
+        <label class="block"><input type="radio" name="q35_applied" value="Yes"> Yes</label>
+        <label class="block"><input type="radio" name="q35_applied" value="No"> No</label>
+      </div>
+      <div class="field"><label class="bold">36. Companies applied to</label><textarea name="q36_applied_companies"></textarea></div>
+      <div class="field"><label class="bold">37. Industry/company/location/salary</label><textarea name="q37_industry_company_salary"></textarea></div>
+      <div class="field"><label class="bold">38. Graduate program accepted</label><textarea name="q38_grad_accepted"></textarea></div>
+      <div class="field"><label class="bold">39. Programs planning to apply</label><textarea name="q39_grad_plans"></textarea></div>
+      <div class="field"><label class="bold">40. Describe your plans after graduation</label><textarea name="q40_plans_desc"></textarea></div>
+    </div>
+
+    <!-- Page 5–6: ABET SLO self-ratings + program attributes -->
+    <div class="card">
+      <h2>Self-ratings on ABET outcomes</h2>
+      <table class="lik">
+        <thead><tr><th>By completing the BSME program at UTRGV, I am able to…</th>
+          <th>Strongly Disagree</th><th>Disagree</th><th>Agree</th><th>Strongly Agree</th></tr></thead>
+        <tbody>
+          {% for key, text in [
+            ("slo1","Identify, formulate, and solve complex engineering problems…"),
+            ("slo2","Apply engineering design to produce solutions that meet specified needs…"),
+            ("slo3","Communicate effectively with a range of audiences."),
+            ("slo4","Recognize ethical and professional responsibilities…"),
+            ("slo5","Function effectively on a team…"),
+            ("slo6","Develop and conduct appropriate experimentation…"),
+            ("slo7","Acquire and apply new knowledge as needed…")
+          ] %}
+            <tr>
+              <td>{{ text }}</td>
+              {% for opt in ["Strongly Disagree","Disagree","Agree","Strongly Agree"] %}
+                <td><input type="radio" required name="q41_{{key}}" value="{{opt}}"></td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Program provided an education that…</h2>
+      <table class="lik">
+        <thead><tr><th>Statement</th><th>Strongly Disagree</th><th>Disagree</th><th>Agree</th><th>Strongly Agree</th></tr></thead>
+        <tbody>
+          {% for key, text in [
+            ("ethics","Helped me develop professional ethics"),
+            ("oral","Developed my oral communication skills"),
+            ("practical","Helped me apply theoretical knowledge to practical situations"),
+            ("current","Helped me understand current issues and trends in the field"),
+            ("written","Developed my written communication skills"),
+            ("critical","Developed my critical thinking skills"),
+            ("team","Helped me learn to function effectively as a member of a team"),
+            ("independent","Helped me function as an independent learner"),
+            ("rigor","Demanded a satisfactory level of academic rigor"),
+            ("prepared","Prepared me for further education and/or career"),
+            ("problem","Developed my problem-solving skills")
+          ] %}
+            <tr>
+              <td>{{ text }}</td>
+              {% for opt in ["Strongly Disagree","Disagree","Agree","Strongly Agree"] %}
+                <td><input type="radio" name="q42_{{key}}" value="{{opt}}"></td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Experience in the BSME program</h2>
+      <table class="lik">
+        <thead><tr><th>Item</th><th>Below Average</th><th>Average</th><th>Above Average</th><th>Excellent</th></tr></thead>
+        <tbody>
+          {% for key, text in [
+            ("instr","Quality of instruction"),
+            ("overall","Quality of education received overall"),
+            ("labs","Quality of lab experiences"),
+            ("tech","Quality of classroom technology"),
+            ("access","Access to faculty"),
+            ("inclusive_mece","Collaborative & inclusive environment within MECE"),
+            ("inclusive_cecs","Collaborative & inclusive environment within CECS")
+          ] %}
+            <tr>
+              <td>{{ text }}</td>
+              {% for opt in ["Below Average","Average","Above Average","Excellent"] %}
+                <td><input type="radio" name="q43_{{key}}" value="{{opt}}"></td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Page 7: open prompts -->
+    <div class="card">
+      <h2>Open Responses</h2>
+      <div class="field"><label class="bold">44. Suggestions to improve your experience</label><textarea name="q44_suggest"></textarea></div>
+      <div class="field"><label class="bold">45. If you could change one thing, what would it be?</label><textarea name="q45_change_one"></textarea></div>
+      <div class="field"><label class="bold">46. Additional changes for the department</label><textarea name="q46_more_changes"></textarea></div>
+    </div>
+
+    <button type="submit">Submit Survey</button>
+  </form>
+</div>
+<footer class="copyright">
+  ©2025 Center for Aerospace Research
+</footer>
+</body></html>
+"""
+
+@parent.route("/survey/form", methods=["GET","POST"])
+def survey_form():
+    if request.method == "POST":
+        form = request.form
+
+        # capture all answers (including checkboxes)
+        answers = {}
+        for k in form.keys():
+            vals = form.getlist(k)
+            answers[k] = vals if len(vals) > 1 else vals[0]
+
+        # derive canonical fields for the survey table
+        first = form.get("q2_first_name", "").strip()
+        last  = form.get("q1_last_name", "").strip()
+        student_name   = f"{first} {last}".strip()
+        year_graduated = form.get("q0_year", "").strip()
+        job_plan       = form.get("q0_job", "").strip()
+
+        payload = (
+            student_name,
+            year_graduated,
+            job_plan,
+            json.dumps(answers, ensure_ascii=False),
+        )
+        with get_survey_conn() as conn:
+            conn.execute("""
+                INSERT INTO graduate_survey_responses
+                    (student_name, year_graduated, job_plan, answers_json)
+                VALUES (?, ?, ?, ?)
+            """, payload)
+            conn.commit()
+
+        return redirect("/survey/thanks")
+
+    return render_template_string(SURVEY_FORM_HTML)
+
+@parent.route("/survey/thanks")
+def survey_thanks():
+    return """
+    <!doctype html><html><head><meta charset="utf-8"><title>Thank you</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+      *{box-sizing:border-box;font-family:Poppins,sans-serif}
+      body{margin:0;background:#f7f9fc;color:#252525;display:flex;flex-direction:column;min-height:100vh}
+      .site-hdr{
+        width:100%;
+        background:linear-gradient(90deg,#003638 0%,#005158 50%,#00736f 100%);
+        box-shadow:0 4px 12px rgba(0,0,0,.08);
+        padding:2.2rem 1rem 2rem;
+        display:flex;justify-content:center;
+      }
+      .hdr-inner{text-align:center;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.35)}
+      .hdr-title{font-size:1.9rem;font-weight:700;letter-spacing:.02rem;margin-bottom:.35rem}
+      .hdr-subtitle{font-size:1.15rem;font-weight:500;letter-spacing:.03rem;opacity:.93}
+      main{flex:1;display:flex;justify-content:center;align-items:center;padding:2rem}
+      .card{background:#fff;padding:1.6rem 2rem;border-radius:16px;
+            box-shadow:0 10px 22px rgba(0,0,0,.12);text-align:center;max-width:520px}
+      .card h1{margin-top:0;color:#003638}
+      .btn-home{
+        margin-top:1.4rem;padding:.7rem 1.4rem;border:none;border-radius:10px;
+        background:#ee7f2f;color:#fff;font-weight:700;cursor:pointer;
+        font-size:1rem;box-shadow:0 4px 10px rgba(0,0,0,.1);
+        transition:transform .05s, box-shadow .15s;
+      }
+      .btn-home:hover{box-shadow:0 6px 14px rgba(0,0,0,.14)}
+      .btn-home:active{transform:translateY(2px)}
+      footer.copyright{
+        width:100%;margin-top:auto;padding:.9rem 0;
+        background:linear-gradient(90deg,#003638 0%,#005158 100%);
+        color:#fff;font-size:.9rem;font-weight:600;letter-spacing:.03rem;text-align:center;
+        box-shadow:0 -4px 10px rgba(0,0,0,.05);
+      }
+    </style>
+    </head><body>
+      <header class="site-hdr">
+        <div class="hdr-inner">
+          <div class="hdr-title">UTRGV Department of Mechanical Engineering</div>
+          <div class="hdr-subtitle">ABET Graduate Survey</div>
+        </div>
+      </header>
+      <main>
+        <div class="card">
+          <h1>Thank you for completing the Graduate Survey!</h1>
+          <p>Your responses have been recorded.</p>
+          <button class="btn-home" onclick="location.href='/login'">🏠 Home</button>
+        </div>
+      </main>
+      <footer class="copyright">
+        ©2025 Center for Aerospace Research
+      </footer>
+    </body></html>
+    """
+
+@parent.route("/survey/download")
+@login_required
+def survey_download():
+    # only admins should see this
+    if session.get("user") != "MECE Admin":
+        return redirect(url_for("abet"))
+
+    # optional: CSV export ?format=csv
+    as_csv = (request.args.get("format", "").lower() == "csv")
+
+    import pandas as pd
+    with get_survey_conn() as conn:
+        df = pd.read_sql_query(
+            """
+            SELECT id, submitted_at, student_name, year_graduated, job_plan, answers_json
+              FROM graduate_survey_responses
+             ORDER BY submitted_at DESC
+            """,
+            conn
+        )
+
+    if as_csv:
+        csv = df.to_csv(index=False)
+        return (csv, 200, {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": "attachment; filename=graduate_survey.csv",
+        })
+
+    # reuse your existing DATA_HTML table template
+    return render_template_string(
+        DATA_HTML,
+        columns=df.columns,
+        rows=df.to_dict(orient="records")
+    )
+
+@parent.route("/survey/analyze")
+@login_required
+def survey_analyze():
+    # Only MECE Admin should access
+    if session.get("user") != "MECE Admin":
+        return redirect(url_for("abet"))
+
+    import pandas as pd, numpy as np, json
+    from io import BytesIO
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    # ---- 1) Load + denormalize answers --------------------------------
+    with get_survey_conn() as conn:
+        df = pd.read_sql_query(
+            "SELECT submitted_at, student_name, year_graduated, job_plan, answers_json "
+            "FROM graduate_survey_responses ORDER BY submitted_at DESC",
+            conn
+        )
+
+    if df.empty:
+        return "<script>alert('No Graduate Survey submissions yet.');window.close();</script>"
+
+    # Parse JSON answers -> flat columns q6_semesters, q7_gpa, q8_orgs_any, q10_orgs (list), …
+    def parse_row(s):
+        try:
+            d = json.loads(s) if isinstance(s, str) else {}
+        except Exception:
+            d = {}
+        return d
+
+    answers = df["answers_json"].apply(parse_row)
+    # Build a column-friendly dataframe (CTE: handle lists by keeping as lists for custom counts)
+    # Extract the keys we chart
+    keys_simple = [
+        "q6_semesters","q7_gpa","q8_orgs_any","q9_orgs_count","q12_conf_any",
+        "q14_intern_any","q17_coop_any","q20_research_any","q24_need_work","q32_plans"
+    ]
+    # Multi-select (list) keys
+    keys_multi = ["q10_orgs"]
+
+    # Create series for simple keys
+    for k in keys_simple:
+        df[k] = [a.get(k) for a in answers]
+
+    # Ensure multi keys are lists
+    for k in keys_multi:
+        df[k] = [a.get(k) if isinstance(a.get(k), list) else
+                 ([a.get(k)] if a.get(k) not in (None, "", []) else []) for a in answers]
+
+    # ---- 2) Tall dashboard figure (stunning but readable) --------------
+    plt.close("all")
+    fig = plt.figure(figsize=(12, 22), dpi=130)
+    gs = fig.add_gridspec(8, 2, height_ratios=[1.2,1,1,1.2,1,1,1,1.4], hspace=0.9, wspace=0.35)
+
+    # Palette helpers
+    bars = plt.cm.Blues
+    piec = plt.cm.Set3
+
+    # 2.1 Time to graduation (barh) – q6_semesters
+    ax = fig.add_subplot(gs[0, :])
+    order_sem = ["Less than 4","4","5","6","7","8","9","10","11","12","More than 12"]
+    # The stored label is like "8", "9", "More than 12" with " semesters" in UI; normalise:
+    def norm_sem(v):
+        if v is None: return None
+        txt = str(v).replace(" semesters","").replace(" semester","").strip()
+        return "Less than 4" if "Less than" in txt else ("More than 12" if "More than" in txt else txt)
+    s = df["q6_semesters"].map(norm_sem)
+    counts = s.value_counts().reindex(order_sem, fill_value=0)
+    y = np.arange(len(counts))
+    ax.barh(y, counts.values, color=bars(np.linspace(0.55, 0.9, len(counts))))
+    for yi, val in zip(y, counts.values):
+        ax.text(val + 0.5, yi, f"{val}", va="center", fontsize=10)
+    ax.set_yticks(y); ax.set_yticklabels([f"{lbl} semesters" if lbl.isdigit() else lbl for lbl in counts.index])
+    ax.set_xlabel("Number of Graduating Seniors")
+    ax.set_title("How many semesters (not including summers) did it take you to graduate?")
+
+    # 2.2 GPA – pie(s) or simple bar by band – q7_gpa
+    ax = fig.add_subplot(gs[1, 0])
+    order_gpa = ["3.5 or higher","3.0–3.5","2.7–3.0","2.5–2.7","Less than 2.5"]
+    gpa = df["q7_gpa"].value_counts().reindex(order_gpa, fill_value=0)
+    ax.pie(gpa.values, labels=gpa.index, autopct="%d", startangle=90, pctdistance=0.85, textprops={"fontsize":9})
+    ax.set_title("UTRGV GPA bands")
+
+    # 2.3 Org involvement – q8_orgs_any
+    ax = fig.add_subplot(gs[1, 1])
+    inv = df["q8_orgs_any"].value_counts().reindex(["Yes","No"], fill_value=0)
+    ax.pie(inv.values, labels=inv.index, autopct="%d", startangle=90, textprops={"fontsize":10})
+    ax.set_title("Were you involved in any CECS student organizations?")
+
+    # 2.4 Org count – q9_orgs_count (pie)
+    ax = fig.add_subplot(gs[2, 0])
+    order_orgcnt = ["0","1","2","3","4","More than 4"]
+    oc = df["q9_orgs_count"].value_counts().reindex(order_orgcnt, fill_value=0)
+    ax.pie(oc.values, labels=oc.index, autopct="%d", startangle=90, textprops={"fontsize":10})
+    ax.set_title("How many CECS orgs have you been involved in?")
+
+    # 2.5 Org names – q10_orgs (stacked counts bar)
+    ax = fig.add_subplot(gs[2, 1])
+    all_orgs = sorted({x for row in df["q10_orgs"] for x in (row or [])})
+    org_counts = pd.Series({org: sum(org in (row or []) for row in df["q10_orgs"]) for org in all_orgs})
+    org_counts = org_counts.sort_values(ascending=True)
+    ax.barh(np.arange(len(org_counts)), org_counts.values, color=plt.cm.tab20(np.linspace(0,1,len(org_counts))))
+    ax.set_yticks(np.arange(len(org_counts))); ax.set_yticklabels(org_counts.index, fontsize=8)
+    ax.set_xlabel("Graduating Seniors"); ax.set_title("Participation by organization")
+
+    # 2.6 Conferences – q12_conf_any
+    ax = fig.add_subplot(gs[3, 0])
+    conf = df["q12_conf_any"].value_counts().reindex(["Yes","No"], fill_value=0)
+    ax.pie(conf.values, labels=conf.index, autopct="%d", startangle=90, textprops={"fontsize":10})
+    ax.set_title("Attended conferences in search of internships/co-ops?")
+
+    # 2.7 Internships – q14_intern_any
+    ax = fig.add_subplot(gs[3, 1])
+    intern = df["q14_intern_any"].value_counts().reindex(["Yes","No"], fill_value=0)
+    ax.pie(intern.values, labels=intern.index, autopct="%d", startangle=90, textprops={"fontsize":10})
+    ax.set_title("Attended summer industry internships?")
+
+    # 2.8 Co-ops – q17_coop_any
+    ax = fig.add_subplot(gs[4, 0])
+    coop = df["q17_coop_any"].value_counts().reindex(["Yes","No"], fill_value=0)
+    ax.pie(coop.values, labels=coop.index, autopct="%d", startangle=90, textprops={"fontsize":10})
+    ax.set_title("Attended fall/spring industry co-ops?")
+
+    # 2.9 Research – q20_research_any (Yes/Yes outside/No)
+    ax = fig.add_subplot(gs[4, 1])
+    order_res = ["Yes (MECE)","Yes (outside MECE)","No"]
+    research = df["q20_research_any"].value_counts().reindex(order_res, fill_value=0)
+    ax.pie(research.values, labels=research.index, autopct="%d", startangle=90, textprops={"fontsize":9})
+    ax.set_title("Undergraduate research participation")
+
+    # 2.10 Worked while studying – q24_need_work
+    ax = fig.add_subplot(gs[5, 0])
+    work = df["q24_need_work"].value_counts().reindex(["Yes","No"], fill_value=0)
+    ax.pie(work.values, labels=work.index, autopct="%d", startangle=90, textprops={"fontsize":10})
+    ax.set_title("During your time at UTRGV, did you work?")
+
+    # 2.11 Plans after graduation – q32_plans
+    ax = fig.add_subplot(gs[5:, :])
+    # Keep a friendly order similar to your sample
+    order_plans = [
+        "Already have engineer job offer",
+        "Plan to work as engineer (no offers yet)",
+        "Have job offer not as an engineer",
+        "Do not plan to work as an engineer",
+        "Accepted into graduate program",
+        "Plan to apply to graduate school",
+        "Other",
+    ]
+    plans = df["q32_plans"].value_counts()
+    # Bring any unseen label to end
+    for k in order_plans:
+        if k not in plans.index:
+            plans.loc[k] = 0
+    plans = plans.reindex(order_plans, fill_value=0)
+
+    # Big pie with counts as labels
+    wedges, texts, autotexts = ax.pie(plans.values, startangle=90, autopct="%d",
+                                      textprops={"fontsize":11})
+    ax.legend(wedges, plans.index, loc="center left", bbox_to_anchor=(1.02, 0.5), fontsize=10)
+    ax.set_title("What are your plans after graduation?")
+
+    # overall title
+    fig.suptitle("Graduate Survey – Summary Dashboard", fontsize=16, weight="bold", y=0.995)
+
+    # ---- 3) Embed as an HTML <img> ------------------------------------
+    buf = BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
+    img64 = base64.b64encode(buf.getvalue()).decode()
+
+    return f"""
+    <!doctype html><html><head><title>Graduate Survey – Analysis</title></head>
+    <body style="margin:0;display:flex;justify-content:center;align-items:flex-start;background:#f7f9fc">
+      <img src="data:image/png;base64,{img64}"
+           style="max-width:95%;height:auto;margin:18px;box-shadow:0 4px 18px rgba(0,0,0,.15);border-radius:10px">
     </body></html>
     """
 
