@@ -107,7 +107,7 @@ USERS = {
     "Kamal Sarkar"    : "1YEQ",
     "Mataz Alcoutlabi": "7ICU",
     "Super User": "LAMR",
-    "Graduate Survey": "SURVEY",  # simple passcode; change anytime
+    "Capstone Exit Survey": "SURVEY",  # simple passcode; change anytime
 }
 SECRET_KEY = "CHANGE-ME"
 
@@ -340,7 +340,7 @@ body{padding-left:.5rem;padding-right:.5rem}
   <option>Mataz Alcoutlabi</option>
   <option>Super User</option>
   <option>MECE Admin</option>
-  <option>Graduate Survey</option>
+  <option>Capstone Exit Survey</option>
 </select>
 
         <label>Password</label>
@@ -488,11 +488,11 @@ footer.copyright{
     </div>
   </section>
   
-  <!-- 1b ░░░ Graduate Survey – Record Preview ░░░ -->
+  <!-- 1b ░░░ Capstone Exit Survey – Record Preview ░░░ -->
 <section class='section'>
-  <h2 class='section-hdr'>Graduate Survey – Record Preview</h2>
+  <h2 class='section-hdr'>Capstone Exit Survey – Record Preview</h2>
   <div class='row' style="gap:.8rem">
-    <button class='btn' onclick='displaySurvey()'>Display Graduate Survey Data</button>
+    <button class='btn' onclick='displaySurvey()'>Display Capstone Exit Survey Data</button>
     <button class='btn' onclick='analyzeSurvey()'>Analyze Data</button>
   </div>
 </section>
@@ -638,7 +638,7 @@ def login():
         if USERS.get(user) == pw:
             session["user"] = user
             # Graduate Survey flow
-            if user == "Graduate Survey":
+            if user == "Capstone Exit Survey":
                 return redirect("/survey/form")
 
             # ───── redirect faculty straight to the mounted app ─────
@@ -1744,421 +1744,231 @@ def survey_start():
 # ------------------ Page 2: the full survey ------------------
 SURVEY_FORM_HTML = r"""
 <!doctype html><html><head>
-<meta charset="utf-8"><title>Graduate Survey – Questionnaire</title>
+<meta charset="utf-8"><title>Capstone Exit Survey</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
 <style>
-/* --- shared header/footer styles --- */
-.site-hdr{
-  width:100%;
-  background:linear-gradient(90deg,#003638 0%,#005158 50%,#00736f 100%);
-  box-shadow:0 4px 12px rgba(0,0,0,.08);
-  padding:2.2rem 1rem 2.4rem;
-  display:flex;justify-content:center;
-  border-top-left-radius:12px;border-top-right-radius:12px;
-}
-.hdr-inner{
-  text-align:center;
-  color:#fff;
-  text-shadow:0 2px 4px rgba(0,0,0,.35);
-  line-height:1.35;
-}
-.hdr-title{
-  font-family:'Poppins',sans-serif;
-  font-size:2rem;
-  font-weight:600;
-  letter-spacing:.5px;
-  margin-bottom:.35rem;
-}
-.hdr-subtitle{
-  font-family:'Poppins',sans-serif;
-  font-size:1.3rem;
-  font-weight:600;
-  letter-spacing:.4px;
-  opacity:.95;
-}
-footer.copyright{
-  width:100%;margin-top:2.5rem;padding:.9rem 0;
-  background:linear-gradient(90deg,#003638 0%,#005158 100%);
-  color:#fff;font-size:.9rem;font-weight:600;text-align:center;
-  box-shadow:0 -4px 10px rgba(0,0,0,.05);
-}
+/* --- header/footer --- */
+.site-hdr{width:100%;background:linear-gradient(90deg,#003638 0%,#005158 50%,#00736f 100%);
+  box-shadow:0 4px 12px rgba(0,0,0,.08);padding:2.2rem 1rem 2.4rem;display:flex;justify-content:center;
+  border-top-left-radius:12px;border-top-right-radius:12px}
+.hdr-inner{text-align:center;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.35);line-height:1.35}
+.hdr-title{font-family:'Poppins',sans-serif;font-size:2rem;font-weight:800;letter-spacing:.5px;margin-bottom:.35rem}
+.hdr-subtitle{font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:600;font-style:italic;letter-spacing:.4px;opacity:.95}
+footer.copyright{width:100%;margin-top:2.5rem;padding:.9rem 0;background:linear-gradient(90deg,#003638 0%,#005158 100%);
+  color:#fff;font-size:.9rem;font-weight:600;text-align:center;box-shadow:0 -4px 10px rgba(0,0,0,.05)}
+
+/* --- page shell --- */
 *{box-sizing:border-box;font-family:Poppins,sans-serif}
 body{margin:0;background:#f7f9fc;color:#252525}
-.wrap{max-width:960px;margin:2rem auto;background:#fff;border-radius:16px;
-      box-shadow:0 8px 24px rgba(0,0,0,.10);padding:1.2rem 1.2rem 1.6rem}
+.wrap{max-width:960px;margin:2rem auto;background:#fff;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.10);padding:1.2rem 1.2rem 1.6rem}
 h1{font-size:1.35rem;margin:.3rem 0 1rem;color:#003638}
-h2{font-size:1.05rem;margin:1.1rem 0 .4rem;color:#003638}
+h2{font-size:1.05rem;margin:1.1rem 0 .6rem;color:#003638}
 
-/* ========= section cards ========= */
-.card{
-  position:relative;
-  padding:1rem 1.1rem 1rem 1.5rem;
-  border-radius:14px;
-  border:1px solid #e8ecef;
-  background:#ffffff;
-  box-shadow:0 6px 18px rgba(0,0,0,.06);
-  margin-bottom:1.2rem;
-}
-.card::before{
-  content:"";
-  position:absolute;left:10px;top:12px;bottom:12px;width:5px;
-  border-radius:6px;
-  background:linear-gradient(180deg,#ee7f2f 0%,#f3b079 100%);
-}
+/* --- section cards with accent bar --- */
+.card{position:relative;padding:1rem 1.1rem 1rem 1.5rem;border-radius:14px;border:1px solid #e8ecef;background:#ffffff;
+  box-shadow:0 6px 18px rgba(0,0,0,.06);margin-bottom:1.2rem}
+.card::before{content:"";position:absolute;left:10px;top:12px;bottom:12px;width:5px;border-radius:6px;
+  background:linear-gradient(180deg,#ee7f2f 0%,#f3b079 100%)}
 .wrap form > .card:nth-of-type(even){background:#f8fbfd}
 
-/* ========= question tiles ========= */
-.card .field{
-  position:relative;
-  margin:.65rem 0;
-  padding:.8rem 1rem .8rem 1.2rem;
-  border-radius:12px;
-  background:#ffffff;
-  border:1px solid #eef2f5;
-  box-shadow:0 2px 8px rgba(0,0,0,.05);
-}
-.card .field::before{
-  content:"";
-  position:absolute;left:.6rem;top:.7rem;bottom:.7rem;width:3px;
-  border-radius:3px;
-  background:#dfe9f2;
-}
-.card .field:nth-of-type(even){background:#f9fbff}
+/* --- question tiles --- */
+.field{position:relative;margin:.65rem 0;padding:.8rem 1rem .8rem 1.2rem;border-radius:12px;background:#ffffff;
+  border:1px solid #eef2f5;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.field::before{content:"";position:absolute;left:.6rem;top:.7rem;bottom:.7rem;width:3px;border-radius:3px;background:#dfe9f2}
+.field:nth-of-type(even){background:#f9fbff}
 
-/* identity card narrower */
-.identity-card{max-width:720px;margin:0 auto 1.2rem}
-.identity-card .grid2{gap:.9rem}
-.identity-card .field{margin:0}
-
-/* controls */
+/* --- controls --- */
 label.bold{font-weight:600}
-label.block{display:flex;align-items:center;gap:.5rem;padding:.25rem 0}
-input[type=text],input[type=number],textarea,select{
-  width:100%;padding:.6rem .7rem;border:1px solid #ccc;border-radius:8px;background:#fafafa
+/* --- radio/checkbox rows: tight grid so text wraps inside the tile --- */
+label.block{
+  display: grid;
+  grid-template-columns: 20px 1fr;   /* dot | text */
+  align-items: start;
+  column-gap: .55rem;
+  row-gap: 0;                         /* keep rows compact */
+  padding: .25rem 0;
 }
+
+label.block input[type="radio"],
+label.block input[type="checkbox"]{
+  margin-top: .2rem;                 /* optically center the dot/box */
+}
+
+label.block .lbl{
+  white-space: normal;               /* allow wrapping */
+  word-break: break-word;            /* never overflow outside the card */
+  line-height: 1.25;
+}
+
+input,textarea,select{width:100%;padding:.6rem .7rem;border:1px solid #ccc;border-radius:8px;background:#fafafa}
 textarea{min-height:90px}
-button{margin-top:1rem;width:100%;padding:.8rem 1rem;border:none;border-radius:10px;background:#ee7f2f;color:#fff;font-weight:700;cursor:pointer}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+button{margin-top:1rem;width:100%;padding:.8rem 1rem;border:none;border-radius:10px;background:#ee7f2f;color:#fff;font-weight:700;cursor:pointer}
+
+/* Likert table */
 table.lik{border-collapse:collapse;width:100%;font-size:.92rem;background:#fff;border-radius:12px;box-shadow:0 3px 12px rgba(0,0,0,.05)}
 table.lik th,table.lik td{border:1px solid #e0e0e0;padding:.45rem .5rem;text-align:center}
 table.lik th:first-child,table.lik td:first-child{text-align:left;font-weight:600}
 table.lik th{background:#f1f6f8}
 table.lik tr:nth-child(even) td{background:#fbfdff}
-</style></head><body>
+small.hint{display:block;color:#666;margin-top:.15rem}
+</style>
+</head><body>
 <header class="site-hdr">
   <div class="hdr-inner">
     <div class="hdr-title">UTRGV Department of Mechanical Engineering</div>
-    <div class="hdr-subtitle">ABET Graduate Survey</div>
+    <div class="hdr-subtitle">Center for Aerospace Research</div>
   </div>
 </header>
+
 <div class="wrap">
-  <h1>Graduate Survey – Questionnaire</h1>
-  <form method="post">
+  <h1>Capstone Exit Survey</h1>
+  <form method="post" id="capstoneForm">
 
-    <!-- Student info block -->
-    <div class="card identity-card">
-      <h2>Student Information</h2>
-      <div class="grid2">
-        <div class="field"><label class="bold">1. Last Name</label><input name="q1_last_name" required></div>
-        <div class="field"><label class="bold">2. First Name</label><input name="q2_first_name" required></div>
+    <!-- A. Capstone Project Experience (SOs 1–7) -->
+    <div class="card">
+      <h2>A. Capstone Project Experience</h2>
+      <table class="lik">
+        <thead>
+          <tr>
+            <th>Statement</th>
+            <th>Strongly Disagree</th>
+            <th>Disagree</th>
+            <th>Agree</th>
+            <th>Strongly Agree</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for key, text in [
+            ("so1", "In our capstone project, I felt confident tackling open-ended engineering problems with no single correct solution."),
+            ("so2", "Our team’s design work required balancing technical feasibility with safety, cost, sustainability, and societal impact."),
+            ("so3", "Capstone improved my ability to present technical work clearly to both engineers and non-engineers (written, oral, graphical)."),
+            ("so4", "During our project, we considered ethical, environmental, or societal impacts in making design decisions."),
+            ("so5", "Our capstone team effectively shared leadership, delegated tasks, and held one another accountable."),
+            ("so6", "I am confident designing tests, analyzing data, and drawing conclusions to support engineering decisions."),
+            ("so7", "Capstone pushed me to independently learn new tools, skills, or knowledge that weren’t covered in class.")
+          ] %}
+          <tr>
+            <td>{{ text }}</td>
+            {% for opt in ["Strongly Disagree","Disagree","Agree","Strongly Agree"] %}
+              <td><input type="radio" name="cap_{{key}}" value="{{opt}}" required></td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- B. Program Readiness & Experience -->
+    <div class="card">
+      <h2>B. Program Readiness & Experience</h2>
+      <table class="lik">
+        <thead>
+          <tr>
+            <th>Statement</th>
+            <th>Strongly Disagree</th>
+            <th>Disagree</th>
+            <th>Agree</th>
+            <th>Strongly Agree</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for key, text in [
+            ("ready1","Capstone helped me see how my coursework connects to professional engineering practice."),
+            ("ready2","I feel prepared to succeed in my next step (engineering job or graduate program)."),
+            ("ready3","Faculty guidance and feedback during capstone supported my learning and growth."),
+            ("ready4","The program strengthened my ability to work across disciplines and with diverse perspectives.")
+          ] %}
+          <tr>
+            <td>{{ text }}</td>
+            {% for opt in ["Strongly Disagree","Disagree","Agree","Strongly Agree"] %}
+              <td><input type="radio" name="cap_{{key}}" value="{{opt}}" required></td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- C. Open-Ended Reflection -->
+    <div class="card">
+      <h2>C. Open-Ended Reflection</h2>
+      <div class="field">
+        <label class="bold">1) What aspect of capstone most helped you feel “career-ready”?</label>
+        <textarea name="cap_open_best" required></textarea>
       </div>
-      <div class="field"><label class="bold">3. Permanent Mailing Address</label><input name="q3_address" required></div>
-      <div class="grid2">
-        <div class="field"><label class="bold">4. Phone (post-grad)</label><input name="q4_phone" type="tel"
-       pattern="^[0-9\-\+\(\) ]{7,15}$"
-       placeholder="e.g. 956-555-1234" required></div>
-        <div class="field"><label class="bold">5. Non-UTRGV Email</label><input name="q5_email" type="email"
-       placeholder="name@example.com" required></div>
+      <div class="field">
+        <label class="bold">2) What skill or topic do you wish the program had emphasized more before capstone?</label>
+        <textarea name="cap_open_gap" required></textarea>
+      </div>
+      <div class="field">
+        <label class="bold">3) Any additional comments or suggestions for improving capstone or the BSME program?</label>
+        <textarea name="cap_open_more" required></textarea>
       </div>
     </div>
 
+    <!-- D. Placement Information -->
     <div class="card">
-      <h2>Time to degree & GPA</h2>
-      <div class="field">
-        <label class="bold">6. How many semesters (not including summers) did it take to graduate?</label>
-        {% for opt in ["More than 12","12","11","10","9","8","7","6","5","4","Less than 4"] %}
-            <label class="block">
-            <input type="radio" name="q6_semesters" value="{{opt}}" {% if loop.first %}required{% endif %}>
-            {{opt}} semesters
-        </label>
-        {% endfor %}
-      </div>
-      <div class="field">
-        <label class="bold">7. UTRGV GPA</label>
-        {% for opt in ["3.5 or higher","3.0–3.5","2.7–3.0","2.5–2.7","Less than 2.5"] %}
-          <label class="block"><input type="radio" name="q7_gpa" value="{{opt}}"> {{opt}}</label>
-        {% endfor %}
-      </div>
-    </div>
-
-    <!-- Page 2: orgs / leadership / conferences -->
-    <div class="card">
-      <h2>Organizations, leadership, conferences</h2>
-      <div class="field">
-        <label class="bold">8. Involved in any CECS student organizations?</label>
-        <label class="block"><input type="radio" name="q8_orgs_any" value="Yes"> Yes</label>
-        <label class="block"><input type="radio" name="q8_orgs_any" value="No"> No</label>
-      </div>
-      <div class="field">
-        <label class="bold">9. How many organizations?</label>
-        {% for opt in ["0","1","2","3","4","More than 4"] %}
-          <label class="block"><input type="radio" name="q9_orgs_count" value="{{opt}}"> {{opt}}</label>
-        {% endfor %}
-      </div>
-      <div class="field">
-        <label class="bold">10. Which organizations?</label>
-        {% for club in [
-          "ACM","Aero Design","ASCE","ASME","Greenpower USA","Hack&Make","IEEE","MAES",
-          "Material Advantage","Rocket Launchers","SAE","SHPE","SME","SWE","Tau Beta Pi"
-        ] %}
-          <label class="block"><input type="checkbox" name="q10_orgs" value="{{club}}"> {{club}}</label>
-        {% endfor %}
-      </div>
-      <div class="field">
-        <label class="bold">11. Held a leadership role?</label>
-        <label class="block"><input type="radio" name="q11_lead" value="Yes"> Yes</label>
-        <label class="block"><input type="radio" name="q11_lead" value="No"> No</label>
-      </div>
-      <div class="field">
-        <label class="bold">12. Attended conferences for internships/co-ops?</label>
-        <label class="block"><input type="radio" name="q12_conf_any" value="Yes"> Yes</label>
-        <label class="block"><input type="radio" name="q12_conf_any" value="No"> No</label>
-      </div>
-      <div class="field">
-        <label class="bold">13. How many such conferences?</label>
-        {% for opt in ["1","2","3","More than 3"] %}
-          <label class="block"><input type="radio" name="q13_conf_count" value="{{opt}}"> {{opt}}</label>
-        {% endfor %}
-      </div>
-    </div>
-
-    <!-- Page 3: internships / co-ops / research -->
-    <div class="card">
-      <h2>Internships, co-ops, research</h2>
-      <div class="field">
-        <label class="bold">14. Summer industry internship(s)?</label>
-        <label class="block"><input type="radio" name="q14_intern_any" value="Yes"> Yes</label>
-        <label class="block"><input type="radio" name="q14_intern_any" value="No"> No</label>
-      </div>
-      <div class="field">
-        <label class="bold">15. How many internships?</label>
-        {% for opt in ["1","2","3","More than 3"] %}
-          <label class="block"><input type="radio" name="q15_intern_count" value="{{opt}}"> {{opt}}</label>
-        {% endfor %}
-      </div>
-      <div class="field">
-        <label class="bold">16. Companies (internships)</label>
-        <textarea name="q16_intern_companies"></textarea>
-      </div>
-      <div class="field">
-        <label class="bold">17. Fall or spring co-op(s)?</label>
-        <label class="block"><input type="radio" name="q17_coop_any" value="Yes"> Yes</label>
-        <label class="block"><input type="radio" name="q17_coop_any" value="No"> No</label>
-      </div>
-      <div class="field">
-        <label class="bold">18. How many co-ops?</label>
-        {% for opt in ["1","2","3","More than 3"] %}
-          <label class="block"><input type="radio" name="q18_coop_count" value="{{opt}}"> {{opt}}</label>
-        {% endfor %}
-      </div>
-      <div class="field">
-        <label class="bold">19. Company(ies) (co-ops)</label>
-        <textarea name="q19_coop_companies"></textarea>
-      </div>
-      <div class="field">
-        <label class="bold">20. Research with faculty?</label>
-        {% for opt in ["Yes (MECE)","Yes (outside MECE)","No"] %}
-          <label class="block"><input type="radio" name="q20_research_any" value="{{opt}}"> {{opt}}</label>
-        {% endfor %}
-      </div>
-      <div class="field">
-        <label class="bold">21. Research faculty member(s)</label>
-        {% for fac in [
-            "Ala Qubbaj", "Alfirio Trejo", "Constantine Tarawneh", "Dumitru Caruntu", "Eleazar Marquez", "Gregory Potter", "Horacio Vasquez", "Isaac Choutapalli", "Jacob Bensen", "Javier Ortega", "Jose Sanchez", "Kamal Sarkar", "Lawrence Cano", "Marcos Villarreal", "Mataz Alcoutlabi", "Maysam Pournik", "Misael Martinez", "Mohammad Islam", "Nadim Zgheib", "Noe Vargas", "Novonil Sen", "Robert Freeman", "Robert Jones", "Rogelio Benitez", "Samantha Ramirez", "Victoria Padilla", "Weiguang Yang", "Yingchen Yang"
-        ] %}
-          <label class="block"><input type="checkbox" name="q21_research_faculty" value="{{fac}}"> {{fac}}</label>
-        {% endfor %}
-      </div>
-    </div>
-
-    <!-- Page 4: work + plans -->
-    <div class="card">
-      <h2>Work & plans</h2>
-      <div class="field">
-        <label class="bold">24. Needed to work to continue school?</label>
-        <label class="block"><input type="radio" name="q24_need_work" value="Yes"> Yes</label>
-        <label class="block"><input type="radio" name="q24_need_work" value="No"> No</label>
-      </div>
+      <h2>D. Placement Information</h2>
       <div class="grid2">
         <div class="field">
-          <label class="bold">25. Nature of work</label>
-          {% for opt in ["Part-time","Full-time"] %}
-            <label class="block"><input type="radio" name="q25_work_nature" value="{{opt}}"> {{opt}}</label>
-          {% endfor %}
+          <label class="bold">Year of graduation</label>
+          <select name="cap_year" required>
+            <option value="" disabled selected>Select year</option>
+            {% for y in range(2018, 2033) %}
+              <option>{{ y }}</option>
+            {% endfor %}
+          </select>
         </div>
         <div class="field">
-          <label class="bold">26. Where</label>
-          {% for opt in ["On campus","Off campus"] %}
-            <label class="block"><input type="radio" name="q26_work_where" value="{{opt}}"> {{opt}}</label>
-          {% endfor %}
+            <label class="bold">Current status</label>
+            <label class="block"><input type="radio" name="cap_status" value="Employed as engineer" required> <span class="lbl">Employed as engineer</span></label>
+            <label class="block"><input type="radio" name="cap_status" value="Employed outside engineering" required> <span class="lbl">Employed outside engineering</span></label>
+            <label class="block"><input type="radio" name="cap_status" value="Accepted to graduate program" required> <span class="lbl">Accepted to graduate program</span></label>
+            <label class="block"><input type="radio" name="cap_status" value="Planning to apply to graduate school" required> <span class="lbl">Planning to apply to graduate school</span></label>
+            <label class="block"><input type="radio" name="cap_status" value="Seeking employment" required> <span class="lbl">Seeking employment</span></label>
+            <label class="block"><input type="radio" name="cap_status" value="Other" required> <span class="lbl">Other</span></label>
         </div>
       </div>
-      <div class="field">
-        <label class="bold">27. Type of on-campus job(s)</label>
-        {% for opt in ["Research assistant","Grader","Work-Study","Other"] %}
-          <label class="block"><input type="checkbox" name="q27_oncampus_type" value="{{opt}}"> {{opt}}</label>
-        {% endfor %}
+
+      <div class="grid2">
+        <div class="field">
+          <label class="bold">If employed, Job title & Company</label>
+          <input name="cap_job_info" placeholder="e.g., Design Engineer — Acme Corp">
+          <small class="hint">Required if “Employed as engineer” or “Employed outside engineering”.</small>
+        </div>
+        <div class="field">
+          <label class="bold">If in graduate school, Program & Institution</label>
+          <input name="cap_grad_info" placeholder="e.g., MSME — UT Austin">
+          <small class="hint">Required if “Accepted to graduate program”.</small>
+        </div>
       </div>
-
-      <div class="field">
-        <label class="bold">32. Plans after graduation</label>
-        {% for opt in [
-          "Already have engineer job offer",
-          "Plan to work as engineer (no offers yet)",
-          "Have job offer not as an engineer",
-          "Do not plan to work as an engineer",
-          "Accepted into graduate program",
-          "Plan to apply to graduate school",
-          "Other"
-        ] %}
-          <label class="block"><input type="radio" name="q32_plans" value="{{opt}}"> {{opt}}</label>
-        {% endfor %}
-      </div>
-
-      <div class="field">
-        <label class="bold">33. How many job offers?</label>
-        {% for opt in ["1","2","3","More than 3"] %}
-          <label class="block"><input type="radio" name="q33_offers" value="{{opt}}"> {{opt}}</label>
-        {% endfor %}
-      </div>
-      <div class="field">
-        <label class="bold">34. Job offer details</label>
-        <small class="hint">Format: Company – Location – Salary (and sign-on if relevant)</small>
-        <textarea name="q34_offer_details"></textarea>
-      </div>
-
-      <div class="field">
-        <label class="bold">35. Have you applied for an engineering job?</label>
-        <label class="block"><input type="radio" name="q35_applied" value="Yes"> Yes</label>
-        <label class="block"><input type="radio" name="q35_applied" value="No"> No</label>
-      </div>
-      <div class="field"><label class="bold">36. Companies applied to</label><textarea name="q36_applied_companies"></textarea></div>
-      <div class="field"><label class="bold">37. Industry/company/location/salary</label><textarea name="q37_industry_company_salary"></textarea></div>
-      <div class="field"><label class="bold">38. Graduate program accepted</label><textarea name="q38_grad_accepted"></textarea></div>
-      <div class="field"><label class="bold">39. Programs planning to apply</label><textarea name="q39_grad_plans"></textarea></div>
-      <div class="field"><label class="bold">40. Describe your plans after graduation</label><textarea name="q40_plans_desc"></textarea></div>
-    </div>
-
-    <!-- Page 5–6: ABET SLO self-ratings + program attributes -->
-    <div class="card">
-      <h2>Self-ratings on ABET outcomes</h2>
-      <table class="lik">
-        <thead><tr><th>By completing the BSME program at UTRGV, I am able to…</th>
-          <th>Strongly Disagree</th><th>Disagree</th><th>Agree</th><th>Strongly Agree</th></tr></thead>
-        <tbody>
-          {% for key, text in [
-            ("slo1","Identify, formulate, and solve complex engineering problems…"),
-            ("slo2","Apply engineering design to produce solutions that meet specified needs…"),
-            ("slo3","Communicate effectively with a range of audiences."),
-            ("slo4","Recognize ethical and professional responsibilities…"),
-            ("slo5","Function effectively on a team…"),
-            ("slo6","Develop and conduct appropriate experimentation…"),
-            ("slo7","Acquire and apply new knowledge as needed…")
-          ] %}
-            <tr>
-              <td>{{ text }}</td>
-              {% for opt in ["Strongly Disagree","Disagree","Agree","Strongly Agree"] %}
-                <td><input type="radio" required name="q41_{{key}}" value="{{opt}}"></td>
-              {% endfor %}
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <div class="card">
-      <h2>Program provided an education that…</h2>
-      <table class="lik">
-        <thead><tr><th>Statement</th><th>Strongly Disagree</th><th>Disagree</th><th>Agree</th><th>Strongly Agree</th></tr></thead>
-        <tbody>
-          {% for key, text in [
-            ("ethics","Helped me develop professional ethics"),
-            ("oral","Developed my oral communication skills"),
-            ("practical","Helped me apply theoretical knowledge to practical situations"),
-            ("current","Helped me understand current issues and trends in the field"),
-            ("written","Developed my written communication skills"),
-            ("critical","Developed my critical thinking skills"),
-            ("team","Helped me learn to function effectively as a member of a team"),
-            ("independent","Helped me function as an independent learner"),
-            ("rigor","Demanded a satisfactory level of academic rigor"),
-            ("prepared","Prepared me for further education and/or career"),
-            ("problem","Developed my problem-solving skills")
-          ] %}
-            <tr>
-              <td>{{ text }}</td>
-              {% for opt in ["Strongly Disagree","Disagree","Agree","Strongly Agree"] %}
-                <td><input type="radio" name="q42_{{key}}" value="{{opt}}"></td>
-              {% endfor %}
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <div class="card">
-      <h2>Experience in the BSME program</h2>
-      <table class="lik">
-        <thead><tr><th>Item</th><th>Below Average</th><th>Average</th><th>Above Average</th><th>Excellent</th></tr></thead>
-        <tbody>
-          {% for key, text in [
-            ("instr","Quality of instruction"),
-            ("overall","Quality of education received overall"),
-            ("labs","Quality of lab experiences"),
-            ("tech","Quality of classroom technology"),
-            ("access","Access to faculty"),
-            ("inclusive_mece","Collaborative & inclusive environment within MECE"),
-            ("inclusive_cecs","Collaborative & inclusive environment within CECS")
-          ] %}
-            <tr>
-              <td>{{ text }}</td>
-              {% for opt in ["Below Average","Average","Above Average","Excellent"] %}
-                <td><input type="radio" name="q43_{{key}}" value="{{opt}}"></td>
-              {% endfor %}
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Page 7: open prompts -->
-    <div class="card">
-      <h2>Open Responses</h2>
-      <div class="field"><label class="bold">44. Suggestions to improve your experience</label><textarea name="q44_suggest"></textarea></div>
-      <div class="field"><label class="bold">45. If you could change one thing, what would it be?</label><textarea name="q45_change_one"></textarea></div>
-      <div class="field"><label class="bold">46. Additional changes for the department</label><textarea name="q46_more_changes"></textarea></div>
     </div>
 
     <button type="submit">Submit Survey</button>
-    
-    <script>
-    document.querySelector("form").addEventListener("submit", function(e){
-        // If Q8 = Yes, require at least one org in Q10
-        const yes8 = document.querySelector("input[name='q8_orgs_any']:checked");
-        if (yes8 && yes8.value === "Yes") {
-            const orgs = document.querySelectorAll("input[name='q10_orgs']:checked");
-            if (!orgs.length) {
-            alert("Please select at least one organization for Q10.");
-            e.preventDefault();
-            return;
-            }
-        }
-    });
-</script>
   </form>
 </div>
-<footer class="copyright">
-  ©2025 Center for Aerospace Research
-</footer>
+
+<footer class="copyright">©2025 Center for Aerospace Research</footer>
+
+<script>
+/* Conditional requirements for placement fields */
+document.getElementById('capstoneForm').addEventListener('submit', function(e){
+  const status = document.querySelector("input[name='cap_status']:checked");
+  const job    = document.querySelector("input[name='cap_job_info']");
+  const grad   = document.querySelector("input[name='cap_grad_info']");
+  if(status){
+    if((status.value === "Employed as engineer" || status.value === "Employed outside engineering") && !job.value.trim()){
+      alert("Please provide Job title & Company.");
+      e.preventDefault(); return;
+    }
+    if(status.value === "Accepted to graduate program" && !grad.value.trim()){
+      alert("Please provide Program & Institution.");
+      e.preventDefault(); return;
+    }
+  }
+});
+</script>
 </body></html>
 """
 
@@ -2166,41 +1976,40 @@ table.lik tr:nth-child(even) td{background:#fbfdff}
 def survey_form():
     if request.method == "POST":
         form = request.form
-        # ---- basic required checks (server-side) ----
-        first = form.get("q2_first_name", "").strip()
-        last = form.get("q1_last_name", "").strip()
-        email = form.get("q5_email", "").strip()
-        phone = form.get("q4_phone", "").strip()
 
-        # "Student Information" — must be present
-        if not (first and last and form.get("q3_address", "").strip() and email and phone):
-            return "<script>alert('Please complete all Student Information fields.');history.back();</script>"
+        # ---- Capstone-specific validation (no old student-info fields) ----
+        cap_year   = (form.get("cap_year") or "").strip()
+        cap_status = (form.get("cap_status") or "").strip()
+        if not cap_year or not cap_status:
+            return "<script>alert('Please select Year of graduation and Current status.');history.back();</script>"
 
-        # Phone + email formats
-        import re
-        if not re.match(r"^[0-9\-\+\(\) ]{7,15}$", phone):
-            return "<script>alert('Please enter a valid phone number (7–15 chars; digits, space, +, -, () allowed).');history.back();</script>"
+        # Conditional details
+        job_info  = (form.get("cap_job_info")  or "").strip()
+        grad_info = (form.get("cap_grad_info") or "").strip()
+        if cap_status in ("Employed as engineer", "Employed outside engineering") and not job_info:
+            return "<script>alert('Please provide Job title & Company.');history.back();</script>"
+        if cap_status == "Accepted to graduate program" and not grad_info:
+            return "<script>alert('Please provide Program & Institution.');history.back();</script>"
 
-        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
-            return "<script>alert('Please enter a valid email address.');history.back();</script>"
-
-        # Example: if org involvement = Yes, ensure at least one org checked
-        if form.get("q8_orgs_any", "") == "Yes":
-            if not form.getlist("q10_orgs"):
-                return "<script>alert('If you were involved in organizations (Q8), please select at least one in Q10.');history.back();</script>"
-
-        # capture all answers (including checkboxes)
+        # ---- capture everything they submitted (including checkbox/radio groups) ----
         answers = {}
         for k in form.keys():
             vals = form.getlist(k)
             answers[k] = vals if len(vals) > 1 else vals[0]
 
-        # derive canonical fields for the survey table
-        first = form.get("q2_first_name", "").strip()
-        last  = form.get("q1_last_name", "").strip()
-        student_name   = f"{first} {last}".strip()
-        year_graduated = form.get("q0_year", "").strip()
-        job_plan       = form.get("q0_job", "").strip()
+        # Tag this survey type so you can separate later in analysis (optional but useful)
+        answers["_survey_type"] = "capstone_exit"
+
+        # ---- columns used by your DB schema ----
+        # You don't ask for name in the capstone survey, so store empty or derive later if needed.
+        student_name   = ""
+        year_graduated = cap_year
+        # Store a compact "plan" string; you can reconstruct richer detail from answers_json later.
+        job_plan = cap_status
+        if job_info:
+            job_plan += f" | {job_info}"
+        if grad_info:
+            job_plan += f" | {grad_info}"
 
         payload = (
             student_name,
@@ -2208,6 +2017,7 @@ def survey_form():
             job_plan,
             json.dumps(answers, ensure_ascii=False),
         )
+
         with get_survey_conn() as conn:
             conn.execute("""
                 INSERT INTO graduate_survey_responses
@@ -2264,7 +2074,7 @@ def survey_thanks():
       </header>
       <main>
         <div class="card">
-          <h1>Thank you for completing the Graduate Survey!</h1>
+          <h1>Thank you for completing the Capstone Exit Survey!</h1>
           <p>Your responses have been recorded.</p>
           <button class="btn-home" onclick="location.href='/login'">🏠 Home</button>
         </div>
@@ -2472,7 +2282,7 @@ def survey_analyze():
     ax.set_title("What are your plans after graduation?")
 
     # overall title
-    fig.suptitle("Graduate Survey – Summary Dashboard", fontsize=16, weight="bold", y=0.995)
+    fig.suptitle("Capstone Exit Survey – Summary Dashboard", fontsize=16, weight="bold", y=0.995)
 
     # ---- 3) Embed as an HTML <img> ------------------------------------
     buf = BytesIO()
@@ -2480,7 +2290,7 @@ def survey_analyze():
     img64 = base64.b64encode(buf.getvalue()).decode()
 
     return f"""
-    <!doctype html><html><head><title>Graduate Survey – Analysis</title></head>
+    <!doctype html><html><head><title>Capstone Exit Survey – Analysis</title></head>
     <body style="margin:0;display:flex;justify-content:center;align-items:flex-start;background:#f7f9fc">
       <img src="data:image/png;base64,{img64}"
            style="max-width:95%;height:auto;margin:18px;box-shadow:0 4px 18px rgba(0,0,0,.15);border-radius:10px">
