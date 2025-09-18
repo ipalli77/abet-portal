@@ -1745,51 +1745,105 @@ def survey_start():
 SURVEY_FORM_HTML = r"""
 <!doctype html><html><head>
 <meta charset="utf-8"><title>Graduate Survey – Questionnaire</title>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
 <style>
-/* --- shared header/footer styles (copied from LOGIN/ADMIN) --- */
+/* --- shared header/footer styles --- */
 .site-hdr{
   width:100%;
   background:linear-gradient(90deg,#003638 0%,#005158 50%,#00736f 100%);
   box-shadow:0 4px 12px rgba(0,0,0,.08);
-  padding:2.2rem 1rem 2rem;
+  padding:2.2rem 1rem 2.4rem;
   display:flex;justify-content:center;
   border-top-left-radius:12px;border-top-right-radius:12px;
 }
-.hdr-inner{text-align:center;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.35)}
+.hdr-inner{
+  text-align:center;
+  color:#fff;
+  text-shadow:0 2px 4px rgba(0,0,0,.35);
+  line-height:1.35;
+}
 .hdr-title{
-  font-size:1.9rem;font-weight:700;letter-spacing:.02rem;
+  font-family:'Poppins',sans-serif;
+  font-size:2rem;
+  font-weight:600;
+  letter-spacing:.5px;
   margin-bottom:.35rem;
 }
 .hdr-subtitle{
-  font-size:1.15rem;font-weight:500;letter-spacing:.03rem;
-  opacity:.93;
+  font-family:'Poppins',sans-serif;
+  font-size:1.3rem;
+  font-weight:600;
+  letter-spacing:.4px;
+  opacity:.95;
 }
 footer.copyright{
   width:100%;margin-top:2.5rem;padding:.9rem 0;
   background:linear-gradient(90deg,#003638 0%,#005158 100%);
-  color:#fff;font-size:.9rem;font-weight:600;letter-spacing:.03rem;text-align:center;
+  color:#fff;font-size:.9rem;font-weight:600;text-align:center;
   box-shadow:0 -4px 10px rgba(0,0,0,.05);
-  border-bottom-left-radius:12px;border-bottom-right-radius:12px;
 }
 *{box-sizing:border-box;font-family:Poppins,sans-serif}
 body{margin:0;background:#f7f9fc;color:#252525}
-.wrap{max-width:960px;margin:2rem auto;background:#fff;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.10);padding:1.2rem 1.2rem 1.6rem}
+.wrap{max-width:960px;margin:2rem auto;background:#fff;border-radius:16px;
+      box-shadow:0 8px 24px rgba(0,0,0,.10);padding:1.2rem 1.2rem 1.6rem}
 h1{font-size:1.35rem;margin:.3rem 0 1rem;color:#003638}
 h2{font-size:1.05rem;margin:1.1rem 0 .4rem;color:#003638}
-.field{margin:.65rem 0}
+
+/* ========= section cards ========= */
+.card{
+  position:relative;
+  padding:1rem 1.1rem 1rem 1.5rem;
+  border-radius:14px;
+  border:1px solid #e8ecef;
+  background:#ffffff;
+  box-shadow:0 6px 18px rgba(0,0,0,.06);
+  margin-bottom:1.2rem;
+}
+.card::before{
+  content:"";
+  position:absolute;left:10px;top:12px;bottom:12px;width:5px;
+  border-radius:6px;
+  background:linear-gradient(180deg,#ee7f2f 0%,#f3b079 100%);
+}
+.wrap form > .card:nth-of-type(even){background:#f8fbfd}
+
+/* ========= question tiles ========= */
+.card .field{
+  position:relative;
+  margin:.65rem 0;
+  padding:.8rem 1rem .8rem 1.2rem;
+  border-radius:12px;
+  background:#ffffff;
+  border:1px solid #eef2f5;
+  box-shadow:0 2px 8px rgba(0,0,0,.05);
+}
+.card .field::before{
+  content:"";
+  position:absolute;left:.6rem;top:.7rem;bottom:.7rem;width:3px;
+  border-radius:3px;
+  background:#dfe9f2;
+}
+.card .field:nth-of-type(even){background:#f9fbff}
+
+/* identity card narrower */
+.identity-card{max-width:720px;margin:0 auto 1.2rem}
+.identity-card .grid2{gap:.9rem}
+.identity-card .field{margin:0}
+
+/* controls */
 label.bold{font-weight:600}
-.row{display:flex;flex-wrap:wrap;gap:1rem}
-input[type=text], input[type=number], textarea, select{width:100%;padding:.6rem .7rem;border:1px solid #ccc;border-radius:8px;background:#fafafa}
+label.block{display:flex;align-items:center;gap:.5rem;padding:.25rem 0}
+input[type=text],input[type=number],textarea,select{
+  width:100%;padding:.6rem .7rem;border:1px solid #ccc;border-radius:8px;background:#fafafa
+}
 textarea{min-height:90px}
-.block{display:block;margin:.25rem 0}
-small.hint{display:block;color:#666;margin-top:.15rem}
 button{margin-top:1rem;width:100%;padding:.8rem 1rem;border:none;border-radius:10px;background:#ee7f2f;color:#fff;font-weight:700;cursor:pointer}
-.card{background:#fdfdfd;padding:0.8rem 0.9rem;border:1px solid #eee;border-radius:12px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
-table.lik{border-collapse:collapse;width:100%;font-size:.92rem}
-table.lik th, table.lik td{border:1px solid #e0e0e0;padding:.45rem .5rem;text-align:center}
-table.lik th:first-child, table.lik td:first-child{text-align:left;font-weight:600}
+table.lik{border-collapse:collapse;width:100%;font-size:.92rem;background:#fff;border-radius:12px;box-shadow:0 3px 12px rgba(0,0,0,.05)}
+table.lik th,table.lik td{border:1px solid #e0e0e0;padding:.45rem .5rem;text-align:center}
+table.lik th:first-child,table.lik td:first-child{text-align:left;font-weight:600}
+table.lik th{background:#f1f6f8}
+table.lik tr:nth-child(even) td{background:#fbfdff}
 </style></head><body>
 <header class="site-hdr">
   <div class="hdr-inner">
@@ -1801,15 +1855,21 @@ table.lik th:first-child, table.lik td:first-child{text-align:left;font-weight:6
   <h1>Graduate Survey – Questionnaire</h1>
   <form method="post">
 
-    <!-- Identifiers from page 1 -->
-    <div class="grid2">
-      <div class="field"><label class="bold">1. Last Name</label><input name="q1_last_name"></div>
-      <div class="field"><label class="bold">2. First Name</label><input name="q2_first_name"></div>
-    </div>
-    <div class="field"><label class="bold">3. Permanent Mailing Address</label><input name="q3_address"></div>
-    <div class="grid2">
-      <div class="field"><label class="bold">4. Phone (post-grad)</label><input name="q4_phone"></div>
-      <div class="field"><label class="bold">5. Non-UTRGV Email</label><input name="q5_email"></div>
+    <!-- Student info block -->
+    <div class="card identity-card">
+      <h2>Student Information</h2>
+      <div class="grid2">
+        <div class="field"><label class="bold">1. Last Name</label><input name="q1_last_name" required></div>
+        <div class="field"><label class="bold">2. First Name</label><input name="q2_first_name" required></div>
+      </div>
+      <div class="field"><label class="bold">3. Permanent Mailing Address</label><input name="q3_address" required></div>
+      <div class="grid2">
+        <div class="field"><label class="bold">4. Phone (post-grad)</label><input name="q4_phone" type="tel"
+       pattern="^[0-9\-\+\(\) ]{7,15}$"
+       placeholder="e.g. 956-555-1234" required></div>
+        <div class="field"><label class="bold">5. Non-UTRGV Email</label><input name="q5_email" type="email"
+       placeholder="name@example.com" required></div>
+      </div>
     </div>
 
     <div class="card">
@@ -1817,7 +1877,10 @@ table.lik th:first-child, table.lik td:first-child{text-align:left;font-weight:6
       <div class="field">
         <label class="bold">6. How many semesters (not including summers) did it take to graduate?</label>
         {% for opt in ["More than 12","12","11","10","9","8","7","6","5","4","Less than 4"] %}
-          <label class="block"><input type="radio" name="q6_semesters" value="{{opt}}"> {{opt}} semesters</label>
+            <label class="block">
+            <input type="radio" name="q6_semesters" value="{{opt}}" {% if loop.first %}required{% endif %}>
+            {{opt}} semesters
+        </label>
         {% endfor %}
       </div>
       <div class="field">
@@ -1911,9 +1974,7 @@ table.lik th:first-child, table.lik td:first-child{text-align:left;font-weight:6
       <div class="field">
         <label class="bold">21. Research faculty member(s)</label>
         {% for fac in [
-            "Greg Acosta","Mataz Alcoutlabi","Rogelio Benitez","Lawrence Cano","Dumitru Caruntu",
-            "Isaac Choutapalli","Stephen Crown","Robert Freeman","Arturo Fuentes","Robert Jones",
-            "Karen Lozano","Javier Ortega","John Pemelton","Greg Potter","Maysam Pournik"
+            "Ala Qubbaj", "Alfirio Trejo", "Constantine Tarawneh", "Dumitru Caruntu", "Eleazar Marquez", "Gregory Potter", "Horacio Vasquez", "Isaac Choutapalli", "Jacob Bensen", "Javier Ortega", "Jose Sanchez", "Kamal Sarkar", "Lawrence Cano", "Marcos Villarreal", "Mataz Alcoutlabi", "Maysam Pournik", "Misael Martinez", "Mohammad Islam", "Nadim Zgheib", "Noe Vargas", "Novonil Sen", "Robert Freeman", "Robert Jones", "Rogelio Benitez", "Samantha Ramirez", "Victoria Padilla", "Weiguang Yang", "Yingchen Yang"
         ] %}
           <label class="block"><input type="checkbox" name="q21_research_faculty" value="{{fac}}"> {{fac}}</label>
         {% endfor %}
@@ -2078,6 +2139,21 @@ table.lik th:first-child, table.lik td:first-child{text-align:left;font-weight:6
     </div>
 
     <button type="submit">Submit Survey</button>
+    
+    <script>
+    document.querySelector("form").addEventListener("submit", function(e){
+        // If Q8 = Yes, require at least one org in Q10
+        const yes8 = document.querySelector("input[name='q8_orgs_any']:checked");
+        if (yes8 && yes8.value === "Yes") {
+            const orgs = document.querySelectorAll("input[name='q10_orgs']:checked");
+            if (!orgs.length) {
+            alert("Please select at least one organization for Q10.");
+            e.preventDefault();
+            return;
+            }
+        }
+    });
+</script>
   </form>
 </div>
 <footer class="copyright">
@@ -2090,6 +2166,28 @@ table.lik th:first-child, table.lik td:first-child{text-align:left;font-weight:6
 def survey_form():
     if request.method == "POST":
         form = request.form
+        # ---- basic required checks (server-side) ----
+        first = form.get("q2_first_name", "").strip()
+        last = form.get("q1_last_name", "").strip()
+        email = form.get("q5_email", "").strip()
+        phone = form.get("q4_phone", "").strip()
+
+        # "Student Information" — must be present
+        if not (first and last and form.get("q3_address", "").strip() and email and phone):
+            return "<script>alert('Please complete all Student Information fields.');history.back();</script>"
+
+        # Phone + email formats
+        import re
+        if not re.match(r"^[0-9\-\+\(\) ]{7,15}$", phone):
+            return "<script>alert('Please enter a valid phone number (7–15 chars; digits, space, +, -, () allowed).');history.back();</script>"
+
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            return "<script>alert('Please enter a valid email address.');history.back();</script>"
+
+        # Example: if org involvement = Yes, ensure at least one org checked
+        if form.get("q8_orgs_any", "") == "Yes":
+            if not form.getlist("q10_orgs"):
+                return "<script>alert('If you were involved in organizations (Q8), please select at least one in Q10.');history.back();</script>"
 
         # capture all answers (including checkboxes)
         answers = {}
@@ -2126,7 +2224,7 @@ def survey_form():
 def survey_thanks():
     return """
     <!doctype html><html><head><meta charset="utf-8"><title>Thank you</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
     <style>
       *{box-sizing:border-box;font-family:Poppins,sans-serif}
       body{margin:0;background:#f7f9fc;color:#252525;display:flex;flex-direction:column;min-height:100vh}
@@ -2134,28 +2232,26 @@ def survey_thanks():
         width:100%;
         background:linear-gradient(90deg,#003638 0%,#005158 50%,#00736f 100%);
         box-shadow:0 4px 12px rgba(0,0,0,.08);
-        padding:2.2rem 1rem 2rem;
+        padding:2.2rem 1rem 2.4rem;
         display:flex;justify-content:center;
       }
-      .hdr-inner{text-align:center;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.35)}
-      .hdr-title{font-size:1.9rem;font-weight:700;letter-spacing:.02rem;margin-bottom:.35rem}
-      .hdr-subtitle{font-size:1.15rem;font-weight:500;letter-spacing:.03rem;opacity:.93}
+      .hdr-inner{text-align:center;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.35);line-height:1.35}
+      .hdr-title{font-family:'Poppins',sans-serif;font-size:2rem;font-weight:800;letter-spacing:.5px;margin-bottom:.35rem}
+      .hdr-subtitle{font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:600;font-style:italic;letter-spacing:.4px;opacity:.95}
       main{flex:1;display:flex;justify-content:center;align-items:center;padding:2rem}
       .card{background:#fff;padding:1.6rem 2rem;border-radius:16px;
             box-shadow:0 10px 22px rgba(0,0,0,.12);text-align:center;max-width:520px}
-      .card h1{margin-top:0;color:#003638}
+      .card h1{margin-top:0;color:#003638;font-size:1.4rem;font-weight:600}
       .btn-home{
         margin-top:1.4rem;padding:.7rem 1.4rem;border:none;border-radius:10px;
         background:#ee7f2f;color:#fff;font-weight:700;cursor:pointer;
         font-size:1rem;box-shadow:0 4px 10px rgba(0,0,0,.1);
-        transition:transform .05s, box-shadow .15s;
       }
       .btn-home:hover{box-shadow:0 6px 14px rgba(0,0,0,.14)}
-      .btn-home:active{transform:translateY(2px)}
       footer.copyright{
         width:100%;margin-top:auto;padding:.9rem 0;
         background:linear-gradient(90deg,#003638 0%,#005158 100%);
-        color:#fff;font-size:.9rem;font-weight:600;letter-spacing:.03rem;text-align:center;
+        color:#fff;font-size:.9rem;font-weight:600;text-align:center;
         box-shadow:0 -4px 10px rgba(0,0,0,.05);
       }
     </style>
@@ -2163,7 +2259,7 @@ def survey_thanks():
       <header class="site-hdr">
         <div class="hdr-inner">
           <div class="hdr-title">UTRGV Department of Mechanical Engineering</div>
-          <div class="hdr-subtitle">ABET Graduate Survey</div>
+          <div class="hdr-subtitle">Center for Aerospace Research</div>
         </div>
       </header>
       <main>
@@ -2173,9 +2269,7 @@ def survey_thanks():
           <button class="btn-home" onclick="location.href='/login'">🏠 Home</button>
         </div>
       </main>
-      <footer class="copyright">
-        ©2025 Center for Aerospace Research
-      </footer>
+      <footer class="copyright">©2025 Center for Aerospace Research</footer>
     </body></html>
     """
 
