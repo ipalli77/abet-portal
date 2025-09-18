@@ -1753,8 +1753,8 @@ SURVEY_FORM_HTML = r"""
   border-top-left-radius:12px;border-top-right-radius:12px}
 .hdr-inner{text-align:center;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.35);line-height:1.35}
 .hdr-title{font-family:'Poppins',sans-serif;font-size:2rem;font-weight:800;letter-spacing:.5px;margin-bottom:.35rem}
-.hdr-subtitle{font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:600;font-style:italic;letter-spacing:.4px;opacity:.95}
-footer.copyright{width:100%;margin-top:2.5rem;padding:.9rem 0;background:linear-gradient(90deg,#003638 0%,#005158 100%);
+.hdr-subtitle{font-family:'Poppins',sans-serif;font-size:1.3rem;font-weight:600;letter-spacing:.4px;opacity:.95}
+footer.copyright{width:100%;margin-top:2.0rem;padding:.9rem 0;background:linear-gradient(90deg,#003638 0%,#005158 100%);
   color:#fff;font-size:.9rem;font-weight:600;text-align:center;box-shadow:0 -4px 10px rgba(0,0,0,.05)}
 
 /* --- page shell --- */
@@ -1779,30 +1779,15 @@ h2{font-size:1.05rem;margin:1.1rem 0 .6rem;color:#003638}
 
 /* --- controls --- */
 label.bold{font-weight:600}
-/* --- radio/checkbox rows: tight grid so text wraps inside the tile --- */
-label.block{
-  display: grid;
-  grid-template-columns: 20px 1fr;   /* dot | text */
-  align-items: start;
-  column-gap: .55rem;
-  row-gap: 0;                         /* keep rows compact */
-  padding: .25rem 0;
-}
-
-label.block input[type="radio"],
-label.block input[type="checkbox"]{
-  margin-top: .2rem;                 /* optically center the dot/box */
-}
-
-label.block .lbl{
-  white-space: normal;               /* allow wrapping */
-  word-break: break-word;            /* never overflow outside the card */
-  line-height: 1.25;
-}
+/* grid labels so long radio text wraps nicely */
+label.block{display:grid;grid-template-columns:20px 1fr;align-items:start;column-gap:.55rem;padding:.25rem 0}
+label.block input[type="radio"],label.block input[type="checkbox"]{margin-top:.2rem}
+label.block .lbl{white-space:normal;word-break:break-word;line-height:1.25}
 
 input,textarea,select{width:100%;padding:.6rem .7rem;border:1px solid #ccc;border-radius:8px;background:#fafafa}
 textarea{min-height:90px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media (max-width: 900px){ .grid2{grid-template-columns:1fr;} }
 button{margin-top:1rem;width:100%;padding:.8rem 1rem;border:none;border-radius:10px;background:#ee7f2f;color:#fff;font-weight:700;cursor:pointer}
 
 /* Likert table */
@@ -1817,7 +1802,7 @@ small.hint{display:block;color:#666;margin-top:.15rem}
 <header class="site-hdr">
   <div class="hdr-inner">
     <div class="hdr-title">UTRGV Department of Mechanical Engineering</div>
-    <div class="hdr-subtitle">Center for Aerospace Research</div>
+    <div class="hdr-subtitle">Capstone Survey</div>
   </div>
 </header>
 
@@ -1825,28 +1810,22 @@ small.hint{display:block;color:#666;margin-top:.15rem}
   <h1>Capstone Exit Survey</h1>
   <form method="post" id="capstoneForm">
 
-    <!-- A. Capstone Project Experience (SOs 1–7) -->
+    <!-- A. Capstone Project Experience (SO 1–7) -->
     <div class="card">
       <h2>A. Capstone Project Experience</h2>
       <table class="lik">
         <thead>
-          <tr>
-            <th>Statement</th>
-            <th>Strongly Disagree</th>
-            <th>Disagree</th>
-            <th>Agree</th>
-            <th>Strongly Agree</th>
-          </tr>
+          <tr><th>Statement</th><th>Strongly Disagree</th><th>Disagree</th><th>Agree</th><th>Strongly Agree</th></tr>
         </thead>
         <tbody>
           {% for key, text in [
-            ("so1", "In our capstone project, I felt confident tackling open-ended engineering problems with no single correct solution."),
-            ("so2", "Our team’s design work required balancing technical feasibility with safety, cost, sustainability, and societal impact."),
-            ("so3", "Capstone improved my ability to present technical work clearly to both engineers and non-engineers (written, oral, graphical)."),
-            ("so4", "During our project, we considered ethical, environmental, or societal impacts in making design decisions."),
-            ("so5", "Our capstone team effectively shared leadership, delegated tasks, and held one another accountable."),
-            ("so6", "I am confident designing tests, analyzing data, and drawing conclusions to support engineering decisions."),
-            ("so7", "Capstone pushed me to independently learn new tools, skills, or knowledge that weren’t covered in class.")
+            ("so1","In capstone, I could tackle open-ended engineering problems with confidence."),
+            ("so2","Our design work balanced feasibility with safety, cost, sustainability, and societal impact."),
+            ("so3","Capstone improved my ability to communicate technical work to engineers and non-engineers."),
+            ("so4","We considered ethical, environmental, or societal impacts in project decisions."),
+            ("so5","My team collaborated effectively and shared responsibilities."),
+            ("so6","I can design tests, analyze data, and draw valid conclusions to support decisions."),
+            ("so7","I had to learn new tools/knowledge independently to succeed in capstone.")
           ] %}
           <tr>
             <td>{{ text }}</td>
@@ -1859,25 +1838,18 @@ small.hint{display:block;color:#666;margin-top:.15rem}
       </table>
     </div>
 
-    <!-- B. Program Readiness & Experience -->
+    <!-- B. Program Effectiveness & Readiness -->
     <div class="card">
-      <h2>B. Program Readiness & Experience</h2>
+      <h2>B. Program Effectiveness & Readiness</h2>
       <table class="lik">
         <thead>
-          <tr>
-            <th>Statement</th>
-            <th>Strongly Disagree</th>
-            <th>Disagree</th>
-            <th>Agree</th>
-            <th>Strongly Agree</th>
-          </tr>
+          <tr><th>Statement</th><th>Strongly Disagree</th><th>Disagree</th><th>Agree</th><th>Strongly Agree</th></tr>
         </thead>
         <tbody>
           {% for key, text in [
-            ("ready1","Capstone helped me see how my coursework connects to professional engineering practice."),
-            ("ready2","I feel prepared to succeed in my next step (engineering job or graduate program)."),
-            ("ready3","Faculty guidance and feedback during capstone supported my learning and growth."),
-            ("ready4","The program strengthened my ability to work across disciplines and with diverse perspectives.")
+            ("ready1","The ME curriculum prepared me well for the challenges of capstone."),
+            ("ready2","I feel ready for my next step (employment or graduate school)."),
+            ("ready3","Faculty guidance during capstone supported my learning.")
           ] %}
           <tr>
             <td>{{ text }}</td>
@@ -1890,58 +1862,87 @@ small.hint{display:block;color:#666;margin-top:.15rem}
       </table>
     </div>
 
-    <!-- C. Open-Ended Reflection -->
+    <!-- C. Placement Information -->
     <div class="card">
-      <h2>C. Open-Ended Reflection</h2>
-      <div class="field">
-        <label class="bold">1) What aspect of capstone most helped you feel “career-ready”?</label>
-        <textarea name="cap_open_best" required></textarea>
-      </div>
-      <div class="field">
-        <label class="bold">2) What skill or topic do you wish the program had emphasized more before capstone?</label>
-        <textarea name="cap_open_gap" required></textarea>
-      </div>
-      <div class="field">
-        <label class="bold">3) Any additional comments or suggestions for improving capstone or the BSME program?</label>
-        <textarea name="cap_open_more" required></textarea>
-      </div>
-    </div>
-
-    <!-- D. Placement Information -->
-    <div class="card">
-      <h2>D. Placement Information</h2>
+      <h2>C. Placement Information</h2>
       <div class="grid2">
         <div class="field">
           <label class="bold">Year of graduation</label>
           <select name="cap_year" required>
             <option value="" disabled selected>Select year</option>
-            {% for y in range(2018, 2033) %}
-              <option>{{ y }}</option>
-            {% endfor %}
+            {% for y in range(2018, 2033) %}<option>{{ y }}</option>{% endfor %}
           </select>
         </div>
         <div class="field">
-            <label class="bold">Current status</label>
-            <label class="block"><input type="radio" name="cap_status" value="Employed as engineer" required> <span class="lbl">Employed as engineer</span></label>
-            <label class="block"><input type="radio" name="cap_status" value="Employed outside engineering" required> <span class="lbl">Employed outside engineering</span></label>
-            <label class="block"><input type="radio" name="cap_status" value="Accepted to graduate program" required> <span class="lbl">Accepted to graduate program</span></label>
-            <label class="block"><input type="radio" name="cap_status" value="Planning to apply to graduate school" required> <span class="lbl">Planning to apply to graduate school</span></label>
-            <label class="block"><input type="radio" name="cap_status" value="Seeking employment" required> <span class="lbl">Seeking employment</span></label>
-            <label class="block"><input type="radio" name="cap_status" value="Other" required> <span class="lbl">Other</span></label>
+          <label class="bold">Current status</label>
+          <label class="block"><input type="radio" name="cap_status" value="Employed as engineer" required> <span class="lbl">Employed as engineer</span></label>
+          <label class="block"><input type="radio" name="cap_status" value="Employed outside engineering" required> <span class="lbl">Employed outside engineering</span></label>
+          <label class="block"><input type="radio" name="cap_status" value="Graduate school" required> <span class="lbl">Graduate school</span></label>
+          <label class="block"><input type="radio" name="cap_status" value="Seeking employment" required> <span class="lbl">Seeking employment</span></label>
+          <label class="block"><input type="radio" name="cap_status" value="Other" required> <span class="lbl">Other</span></label>
         </div>
       </div>
 
       <div class="grid2">
         <div class="field">
           <label class="bold">If employed, Job title & Company</label>
-          <input name="cap_job_info" placeholder="e.g., Design Engineer — Acme Corp">
-          <small class="hint">Required if “Employed as engineer” or “Employed outside engineering”.</small>
+          <input name="cap_job_info" placeholder="e.g., Design Engineer — ABC Corp">
+          <small class="hint">Required if employed.</small>
         </div>
         <div class="field">
           <label class="bold">If in graduate school, Program & Institution</label>
-          <input name="cap_grad_info" placeholder="e.g., MSME — UT Austin">
-          <small class="hint">Required if “Accepted to graduate program”.</small>
+          <input name="cap_grad_info" placeholder="e.g., MSME — ABC University">
+          <small class="hint">Required if in graduate school.</small>
         </div>
+      </div>
+    </div>
+
+    <!-- D. Program Feedback for Continuous Improvement -->
+    <div class="card">
+      <h2>D. Program Feedback for Continuous Improvement</h2>
+        <!-- D2a: intervention impact (quantifiable) -->
+  <table class="lik" style="margin-bottom:1rem">
+    <thead>
+      <tr>
+        <th>Statement</th>
+        <th>Strongly Disagree</th>
+        <th>Disagree</th>
+        <th>Agree</th>
+        <th>Strongly Agree</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Recent course/lab changes I experienced (e.g., new projects, revised rubrics, updated labs) improved my learning.</td>
+        {% for opt in ["Strongly Disagree","Disagree","Agree","Strongly Agree"] %}
+          <td><input type="radio" name="cap_intervention_impact" value="{{opt}}" required></td>
+        {% endfor %}
+      </tr>
+    </tbody>
+  </table>
+      <div class="field">
+        <label class="bold">1) Which courses or experiences best prepared you for capstone and professional practice? Why?</label>
+        <textarea name="cap_feedback_best" required></textarea>
+      </div>
+      <div class="field">
+        <label class="bold">2) What specific course changes, skills, or topics should be improved or emphasized more in the ME program?</label>
+        <textarea name="cap_feedback_gap" required></textarea>
+      </div>
+      <div class="field">
+        <label class="bold">3) What single change would have most improved your capstone experience?</label>
+        <textarea name="cap_feedback_capstone_change" required></textarea>
+      </div>
+      <div class="field">
+        <label class="bold">4) Did you face any barriers (advising, scheduling, facilities, prerequisites)? How should we address them?</label>
+        <textarea name="cap_feedback_barriers" required></textarea>
+      </div>
+      <div class="field">
+        <label class="bold">5) Which department supports (mentoring, tutoring, advising, labs) were most effective for you?</label>
+        <textarea name="cap_feedback_supports" required></textarea>
+      </div>
+      <div class="field">
+        <label class="bold">6) Additional comments or suggestions.</label>
+        <textarea name="cap_feedback_more" required></textarea>
       </div>
     </div>
 
@@ -1959,18 +1960,17 @@ document.getElementById('capstoneForm').addEventListener('submit', function(e){
   const grad   = document.querySelector("input[name='cap_grad_info']");
   if(status){
     if((status.value === "Employed as engineer" || status.value === "Employed outside engineering") && !job.value.trim()){
-      alert("Please provide Job title & Company.");
-      e.preventDefault(); return;
+      alert("Please provide Job title & Company."); e.preventDefault(); return;
     }
-    if(status.value === "Accepted to graduate program" && !grad.value.trim()){
-      alert("Please provide Program & Institution.");
-      e.preventDefault(); return;
+    if(status.value === "Graduate school" && !grad.value.trim()){
+      alert("Please provide Program & Institution."); e.preventDefault(); return;
     }
   }
 });
 </script>
 </body></html>
 """
+
 
 @parent.route("/survey/form", methods=["GET","POST"])
 def survey_form():
@@ -2047,7 +2047,7 @@ def survey_thanks():
       }
       .hdr-inner{text-align:center;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.35);line-height:1.35}
       .hdr-title{font-family:'Poppins',sans-serif;font-size:2rem;font-weight:800;letter-spacing:.5px;margin-bottom:.35rem}
-      .hdr-subtitle{font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:600;font-style:italic;letter-spacing:.4px;opacity:.95}
+      .hdr-subtitle{font-family:'Poppins',sans-serif;font-size:1.3rem;font-weight:600;letter-spacing:.4px;opacity:.95}
       main{flex:1;display:flex;justify-content:center;align-items:center;padding:2rem}
       .card{background:#fff;padding:1.6rem 2rem;border-radius:16px;
             box-shadow:0 10px 22px rgba(0,0,0,.12);text-align:center;max-width:520px}
@@ -2069,7 +2069,7 @@ def survey_thanks():
       <header class="site-hdr">
         <div class="hdr-inner">
           <div class="hdr-title">UTRGV Department of Mechanical Engineering</div>
-          <div class="hdr-subtitle">Center for Aerospace Research</div>
+          <div class="hdr-subtitle">Course Survey</div>
         </div>
       </header>
       <main>
@@ -2131,7 +2131,7 @@ def survey_analyze():
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    # ---- 1) Load + denormalize answers --------------------------------
+    # ---- 1) Load survey rows --------------------------------------------
     with get_survey_conn() as conn:
         df = pd.read_sql_query(
             "SELECT submitted_at, student_name, year_graduated, job_plan, answers_json "
@@ -2140,157 +2140,96 @@ def survey_analyze():
         )
 
     if df.empty:
-        return "<script>alert('No Graduate Survey submissions yet.');window.close();</script>"
+        return "<script>alert('No Capstone Exit Survey submissions yet.');window.close();</script>"
 
-    # Parse JSON answers -> flat columns q6_semesters, q7_gpa, q8_orgs_any, q10_orgs (list), …
+    # ---- 2) Parse JSON answers into dicts --------------------------------
     def parse_row(s):
         try:
-            d = json.loads(s) if isinstance(s, str) else {}
+            return json.loads(s) if isinstance(s, str) else {}
         except Exception:
-            d = {}
-        return d
+            return {}
+    ans = df["answers_json"].apply(parse_row)
 
-    answers = df["answers_json"].apply(parse_row)
-    # Build a column-friendly dataframe (CTE: handle lists by keeping as lists for custom counts)
-    # Extract the keys we chart
-    keys_simple = [
-        "q6_semesters","q7_gpa","q8_orgs_any","q9_orgs_count","q12_conf_any",
-        "q14_intern_any","q17_coop_any","q20_research_any","q24_need_work","q32_plans"
+    # ---- 3) Extract Section B Likert fields ------------------------------
+    # Field keys as rendered in SURVEY_FORM_HTML (Section B)
+    items = [
+        ("cap_ready1", "Curriculum → Capstone readiness"),
+        ("cap_ready2", "Ready for next step"),
+        ("cap_ready3", "Faculty guidance supported learning"),
+        ("cap_intervention_impact", "Recent changes improved learning"),  # ← NEW
     ]
-    # Multi-select (list) keys
-    keys_multi = ["q10_orgs"]
+    order = ["Strongly Disagree","Disagree","Agree","Strongly Agree"]
 
-    # Create series for simple keys
-    for k in keys_simple:
-        df[k] = [a.get(k) for a in answers]
+    # Build a tall table of (item, response)
+    rows = []
+    for a in ans:
+        for key, _ in items:
+            val = a.get(key, None)
+            if isinstance(val, list):  # safety: radios should be scalar
+                val = val[0] if val else None
+            rows.append((key, val))
+    tall = pd.DataFrame(rows, columns=["item","resp"]).dropna()
 
-    # Ensure multi keys are lists
-    for k in keys_multi:
-        df[k] = [a.get(k) if isinstance(a.get(k), list) else
-                 ([a.get(k)] if a.get(k) not in (None, "", []) else []) for a in answers]
+    # If no one answered these yet, bail out gracefully
+    if tall.empty or not tall["resp"].isin(order).any():
+        return "<script>alert('No Section B responses yet to plot.');window.close();</script>"
 
-    # ---- 2) Tall dashboard figure (stunning but readable) --------------
+    # Pivot to counts by Likert category for each item
+    ctab = (tall.groupby(["item","resp"]).size()
+                 .unstack(fill_value=0)
+                 .reindex(columns=order, fill_value=0))
+
+    # Convert to % of respondents per question
+    pct = ctab.div(ctab.sum(axis=1), axis=0) * 100
+
+    # Friendly labels in the original order
+    item_labels = [label for _, label in items]
+    pct = pct.reindex(index=[k for k,_ in items])  # ensure row order
+
+    # ---- 4) Figure: 100% stacked bars for Section B ----------------------
     plt.close("all")
-    fig = plt.figure(figsize=(12, 22), dpi=130)
-    gs = fig.add_gridspec(8, 2, height_ratios=[1.2,1,1,1.2,1,1,1,1.4], hspace=0.9, wspace=0.35)
+    fig = plt.figure(figsize=(10.5, 6.2), dpi=150)
+    ax = fig.add_subplot(111)
 
-    # Palette helpers
-    bars = plt.cm.Blues
-    piec = plt.cm.Set3
+    # Stacked bars (left to right equals 100%)
+    left = np.zeros(len(pct))
+    cmap = {
+        "Strongly Disagree": "#b71c1c",
+        "Disagree": "#ef6c00",
+        "Agree": "#2e7d32",
+        "Strongly Agree": "#1b5e20",
+    }
+    for cat in order:
+        vals = pct[cat].values
+        ax.barh(range(len(pct)), vals, left=left,
+                label=cat, color=cmap.get(cat, "#999"))
+        # label segment if big enough
+        for i, v in enumerate(vals):
+            if v >= 7:  # avoid clutter on tiny segments
+                ax.text(left[i] + v/2, i, f"{v:.0f}%", va="center",
+                        ha="center", color="white", fontsize=9, fontweight="600")
+        left += vals
 
-    # 2.1 Time to graduation (barh) – q6_semesters
-    ax = fig.add_subplot(gs[0, :])
-    order_sem = ["Less than 4","4","5","6","7","8","9","10","11","12","More than 12"]
-    # The stored label is like "8", "9", "More than 12" with " semesters" in UI; normalise:
-    def norm_sem(v):
-        if v is None: return None
-        txt = str(v).replace(" semesters","").replace(" semester","").strip()
-        return "Less than 4" if "Less than" in txt else ("More than 12" if "More than" in txt else txt)
-    s = df["q6_semesters"].map(norm_sem)
-    counts = s.value_counts().reindex(order_sem, fill_value=0)
-    y = np.arange(len(counts))
-    ax.barh(y, counts.values, color=bars(np.linspace(0.55, 0.9, len(counts))))
-    for yi, val in zip(y, counts.values):
-        ax.text(val + 0.5, yi, f"{val}", va="center", fontsize=10)
-    ax.set_yticks(y); ax.set_yticklabels([f"{lbl} semesters" if lbl.isdigit() else lbl for lbl in counts.index])
-    ax.set_xlabel("Number of Graduating Seniors")
-    ax.set_title("How many semesters (not including summers) did it take you to graduate?")
+    ax.set_yticks(range(len(pct)))
+    ax.set_yticklabels(item_labels, fontsize=10)
+    ax.set_xlim(0, 100)
+    ax.set_xlabel("Percent of respondents", fontsize=10)
+    ax.set_title("Capstone Exit Survey – Program Effectiveness & Readiness (Section B)",
+                 fontsize=12, weight="bold", pad=8)
+    ax.grid(axis="x", linestyle="--", alpha=.25)
+    ax.spines[["right","top"]].set_visible(False)
+    ax.legend(loc="lower right", frameon=False, ncol=2, fontsize=9)
 
-    # 2.2 GPA – pie(s) or simple bar by band – q7_gpa
-    ax = fig.add_subplot(gs[1, 0])
-    order_gpa = ["3.5 or higher","3.0–3.5","2.7–3.0","2.5–2.7","Less than 2.5"]
-    gpa = df["q7_gpa"].value_counts().reindex(order_gpa, fill_value=0)
-    ax.pie(gpa.values, labels=gpa.index, autopct="%d", startangle=90, pctdistance=0.85, textprops={"fontsize":9})
-    ax.set_title("UTRGV GPA bands")
+    fig.tight_layout()
 
-    # 2.3 Org involvement – q8_orgs_any
-    ax = fig.add_subplot(gs[1, 1])
-    inv = df["q8_orgs_any"].value_counts().reindex(["Yes","No"], fill_value=0)
-    ax.pie(inv.values, labels=inv.index, autopct="%d", startangle=90, textprops={"fontsize":10})
-    ax.set_title("Were you involved in any CECS student organizations?")
-
-    # 2.4 Org count – q9_orgs_count (pie)
-    ax = fig.add_subplot(gs[2, 0])
-    order_orgcnt = ["0","1","2","3","4","More than 4"]
-    oc = df["q9_orgs_count"].value_counts().reindex(order_orgcnt, fill_value=0)
-    ax.pie(oc.values, labels=oc.index, autopct="%d", startangle=90, textprops={"fontsize":10})
-    ax.set_title("How many CECS orgs have you been involved in?")
-
-    # 2.5 Org names – q10_orgs (stacked counts bar)
-    ax = fig.add_subplot(gs[2, 1])
-    all_orgs = sorted({x for row in df["q10_orgs"] for x in (row or [])})
-    org_counts = pd.Series({org: sum(org in (row or []) for row in df["q10_orgs"]) for org in all_orgs})
-    org_counts = org_counts.sort_values(ascending=True)
-    ax.barh(np.arange(len(org_counts)), org_counts.values, color=plt.cm.tab20(np.linspace(0,1,len(org_counts))))
-    ax.set_yticks(np.arange(len(org_counts))); ax.set_yticklabels(org_counts.index, fontsize=8)
-    ax.set_xlabel("Graduating Seniors"); ax.set_title("Participation by organization")
-
-    # 2.6 Conferences – q12_conf_any
-    ax = fig.add_subplot(gs[3, 0])
-    conf = df["q12_conf_any"].value_counts().reindex(["Yes","No"], fill_value=0)
-    ax.pie(conf.values, labels=conf.index, autopct="%d", startangle=90, textprops={"fontsize":10})
-    ax.set_title("Attended conferences in search of internships/co-ops?")
-
-    # 2.7 Internships – q14_intern_any
-    ax = fig.add_subplot(gs[3, 1])
-    intern = df["q14_intern_any"].value_counts().reindex(["Yes","No"], fill_value=0)
-    ax.pie(intern.values, labels=intern.index, autopct="%d", startangle=90, textprops={"fontsize":10})
-    ax.set_title("Attended summer industry internships?")
-
-    # 2.8 Co-ops – q17_coop_any
-    ax = fig.add_subplot(gs[4, 0])
-    coop = df["q17_coop_any"].value_counts().reindex(["Yes","No"], fill_value=0)
-    ax.pie(coop.values, labels=coop.index, autopct="%d", startangle=90, textprops={"fontsize":10})
-    ax.set_title("Attended fall/spring industry co-ops?")
-
-    # 2.9 Research – q20_research_any (Yes/Yes outside/No)
-    ax = fig.add_subplot(gs[4, 1])
-    order_res = ["Yes (MECE)","Yes (outside MECE)","No"]
-    research = df["q20_research_any"].value_counts().reindex(order_res, fill_value=0)
-    ax.pie(research.values, labels=research.index, autopct="%d", startangle=90, textprops={"fontsize":9})
-    ax.set_title("Undergraduate research participation")
-
-    # 2.10 Worked while studying – q24_need_work
-    ax = fig.add_subplot(gs[5, 0])
-    work = df["q24_need_work"].value_counts().reindex(["Yes","No"], fill_value=0)
-    ax.pie(work.values, labels=work.index, autopct="%d", startangle=90, textprops={"fontsize":10})
-    ax.set_title("During your time at UTRGV, did you work?")
-
-    # 2.11 Plans after graduation – q32_plans
-    ax = fig.add_subplot(gs[5:, :])
-    # Keep a friendly order similar to your sample
-    order_plans = [
-        "Already have engineer job offer",
-        "Plan to work as engineer (no offers yet)",
-        "Have job offer not as an engineer",
-        "Do not plan to work as an engineer",
-        "Accepted into graduate program",
-        "Plan to apply to graduate school",
-        "Other",
-    ]
-    plans = df["q32_plans"].value_counts()
-    # Bring any unseen label to end
-    for k in order_plans:
-        if k not in plans.index:
-            plans.loc[k] = 0
-    plans = plans.reindex(order_plans, fill_value=0)
-
-    # Big pie with counts as labels
-    wedges, texts, autotexts = ax.pie(plans.values, startangle=90, autopct="%d",
-                                      textprops={"fontsize":11})
-    ax.legend(wedges, plans.index, loc="center left", bbox_to_anchor=(1.02, 0.5), fontsize=10)
-    ax.set_title("What are your plans after graduation?")
-
-    # overall title
-    fig.suptitle("Capstone Exit Survey – Summary Dashboard", fontsize=16, weight="bold", y=0.995)
-
-    # ---- 3) Embed as an HTML <img> ------------------------------------
+    # ---- 5) Embed as base64 and return HTML ------------------------------
     buf = BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight")
+    import base64
     img64 = base64.b64encode(buf.getvalue()).decode()
 
     return f"""
-    <!doctype html><html><head><title>Capstone Exit Survey – Analysis</title></head>
+    <!doctype html><html><head><title>Capstone Exit Survey – Section B</title></head>
     <body style="margin:0;display:flex;justify-content:center;align-items:flex-start;background:#f7f9fc">
       <img src="data:image/png;base64,{img64}"
            style="max-width:95%;height:auto;margin:18px;box-shadow:0 4px 18px rgba(0,0,0,.15);border-radius:10px">
