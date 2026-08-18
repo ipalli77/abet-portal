@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}Create workspace · {{ config.PRODUCT_NAME }}{% endblock %}
+{% block main_class %}auth-shell{% endblock %}
+{% block content %}
+<section class="auth-card wide">
+  <p class="eyebrow">First-run secure setup</p>
+  {% if config.EDITION == 'utrgv_mece' %}<h1>Initialize UTRGV Mechanical Engineering</h1><p class="muted">This creates one UTRGV BSME workspace for the Edinburg and Brownsville campuses, with the configured course catalog, terms, SLO/PI model, EPAN rubric, and owner-approved faculty assignment roster. Campus is required on every new assessment. Faculty accounts are invitation-only.</p>{% else %}<h1>Create your accreditation workspace</h1><p class="muted">This creates the institution, first engineering program, ABET 1–7 outcome starter set, EPAN rubric, and owner account. Everything remains editable.</p>{% endif %}
+  <form method="post" class="form-grid two">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if config.SETUP_TOKEN %}<label class="full">Deployment setup token<input type="password" name="setup_token" required><small>Provided by the deployment operator; distinct from the owner password.</small></label>{% endif %}
+    {% if config.EDITION != 'utrgv_mece' %}<label>Institution name<input name="institution" required></label><label>Program name<input name="program_name" placeholder="Mechanical Engineering" required></label><label>Program code<input name="program_code" placeholder="BSME" required></label>{% endif %}
+    <label>Owner name<input name="full_name"{% if designated_owner_name %} value="{{ designated_owner_name }}"{% endif %} required></label>
+    <label>Owner email<input type="email" name="email"{% if designated_owner_email %} value="{{ designated_owner_email }}" readonly{% endif %} required>{% if designated_owner_email %}<small>This UTRGV edition is licensed to its designated owner.</small>{% endif %}</label>
+    <label>Owner password<input type="password" name="password" minlength="12" autocomplete="new-password" required><small>At least 12 characters</small></label>
+    <div class="full"><button class="button primary" type="submit">{{ 'Initialize UTRGV edition' if config.EDITION == 'utrgv_mece' else 'Create workspace' }}</button></div>
+  </form>
+</section>
+{% endblock %}

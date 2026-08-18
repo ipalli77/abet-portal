@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block title %}Choose Faculty View scope · {{ program.name }}{% endblock %}
+{% block content %}
+{% set current_course_id = request.form.get('course_id', selected_course_id|default('')) %}
+{% set current_campuses = request.form.getlist('campus') or selected_campuses|default([]) %}
+
+<div class="page-head faculty-view-page-head">
+  <div>
+    <p class="eyebrow">Faculty View support login</p>
+    <h1>Choose the faculty access to verify</h1>
+    <p class="muted">Select exactly one course and the campus evidence this support session should show. The normal faculty restrictions apply everywhere after you continue.</p>
+  </div>
+  {% if selected_course_id|default(false) %}<a class="button secondary" href="{{ url_for('platform.dashboard') }}">Keep current scope</a>{% endif %}
+</div>
+
+<section class="panel faculty-view-scope-panel" aria-labelledby="faculty-view-scope-heading">
+  <div class="faculty-view-live-warning" role="alert">
+    <div class="faculty-view-indicator" aria-hidden="true">FV</div>
+    <div>
+      <h2>This is a live faculty account, not a demonstration sandbox</h2>
+      <p>Assessment records created or edited through this login are real, saved in the program database, included in the audit history, and attributed to this support account.</p>
+      <p>Existing records collected by another faculty member may remain read-only because normal record-ownership rules still apply.</p>
+    </div>
+  </div>
+
+  {% if courses and campuses %}
+    <form method="post" action="{{ url_for('platform.utrgv_support_scope') }}" class="stack gap-large faculty-view-scope-form" data-faculty-preview-scope-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <p class="step">01</p>
+        <label for="faculty-view-course">Course to view
+          <select id="faculty-view-course" name="course_id" required aria-describedby="faculty-view-course-help">
+            <option value="" disabled {{ 'selected' if not current_course_id }}>Choose one active course</option>
+            {% for course in courses %}<option value="{{ course.id }}" {{ 'selected' if current_course_id|string == course.id|string }}>{{ course.code }} · {{ course.name }}</option>{% endfor %}
+          </select>
+          <small id="faculty-view-course-help">Only this course will appear in faculty assessment, analysis, report, export, evidence, and improvement views.</small>
+        </label>
+      </div>
+
+      <fieldset class="faculty-view-campus-fieldset">
+        <legend><span class="step">02</span> Campus evidence to view</legend>
+        <p>Select Edinburg, Brownsville, or both. At least one campus is required.</p>
+        <div class="campus-choice-grid">
+          {% for campus in campuses %}
+            <label>
+              <input type="checkbox" name="campus" value="{{ campus }}" {{ 'checked' if campus in current_campuses }}>
+              <span><strong>{{ campus }}</strong><small>Selected-course assessment evidence from {{ campus }}</small></span>
+            </label>
+          {% endfor %}
+        </div>
+        <div class="faculty-view-campus-actions">
+          <button class="link-button dark" type="button" data-faculty-preview-both>Select both campuses</button>
+          <button class="link-button dark" type="button" data-faculty-preview-clear>Clear</button>
+        </div>
+        <p class="faculty-view-scope-validation" data-faculty-preview-scope-validation role="status" aria-live="polite"></p>
+      </fieldset>
+
+      <div class="faculty-view-scope-impact">
+        <strong>One shared support scope</strong>
+        <p>Saving this choice changes the visible course and campus scope for every browser session currently signed in with this dedicated support account.</p>
+      </div>
+      <div class="sticky-actions">
+        <span>The Faculty View banner will remain visible on every page.</span>
+        <button class="button primary" type="submit">Use this Faculty View</button>
+      </div>
+    </form>
+  {% else %}
+    <div class="empty-state">
+      <h2>No Faculty View scope is available</h2>
+      <p>An owner must configure at least one active course before this support login can be used.</p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

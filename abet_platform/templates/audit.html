@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% block title %}Audit history · {{ program.name }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Accountability</p><h1>Audit history</h1><p class="muted">A tenant-scoped record of configuration, evidence workflow, and access changes.</p></div><a class="button secondary" href="{{ url_for('platform.users') }}">Back to users</a></div>
+<section class="panel flush"><div class="table-wrap"><table><thead><tr><th>Time</th><th>Person</th><th>Action</th><th>Entity</th><th>ID</th><th>Origin</th><th>Details</th></tr></thead><tbody>{% for item in events %}<tr><td>{{ item.created_at }}</td><td>{{ item.full_name or 'System' }}</td><td>{{ item.action }}</td><td>{{ item.entity_type }}</td><td>{{ item.entity_id or '—' }}</td><td>{{ item.ip_address or '—' }}</td><td><code>{{ item.details_json }}</code></td></tr>{% else %}<tr><td colspan="7">No audit events yet.</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

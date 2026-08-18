@@ -1,0 +1,247 @@
+{% extends 'base.html' %}
+{% block title %}Assessments · {{ program.name }}{% endblock %}
+{% block content %}
+{% set bulk_approval_available = config.EDITION == 'utrgv_mece' and g.membership.role in ('owner', 'admin') %}
+{% set assessment_filter_course_campus_scoped = allowed_campuses_by_course is defined and allowed_campuses_by_course is not none %}
+{% set approval = namespace(eligible_count=0) %}
+{% if bulk_approval_available %}
+  {% for row in records %}
+    {% if row.status in ('draft', 'submitted') %}
+      {% set approval.eligible_count = approval.eligible_count + 1 %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Evidence collection</p>
+    <h1>Assessment records</h1>
+    <p class="muted">Faculty may revise their own draft, returned, or submitted records for assigned courses. Editing a submitted record reopens review; approved records require an administrator.</p>
+  </div>
+  <div class="head-actions">
+    <a class="button secondary" href="{{ url_for('platform.export_csv') }}">Export CSV</a>
+    <a class="button primary" href="{{ url_for('platform.assessment_new') }}">New assessment</a>
+  </div>
+</div>
+
+<section class="panel filter-panel">
+  <form method="get" class="filter-grid"{% if assessment_filter_course_campus_scoped %} data-assessment-filter-course-campus-scoped{% endif %}>
+    <label>Status
+      <select name="status">
+        <option value="">All</option>
+        {% for value in ('draft','submitted','approved','returned') %}
+          <option value="{{ value }}" {{ 'selected' if request.args.get('status') == value }}>{{ value|title }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% if config.EDITION == 'utrgv_mece' %}
+      <label>Campus
+        <select name="campus" id="assessment-filter-campus">
+          <option value="">{{ 'All authorized campuses' if assessment_filter_course_campus_scoped else 'Both campuses' }}</option>
+          {% for campus in campuses %}
+            <option value="{{ campus }}" {{ 'selected' if request.args.get('campus') == campus }}>{{ campus }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    {% endif %}
+    <label>Term
+      <select name="term_id">
+        <option value="">All</option>
+        {% for item in terms %}
+          <option value="{{ item.id }}" {{ 'selected' if request.args.get('term_id') == item.id|string }}>{{ item.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Course
+      <select name="course_id" id="assessment-filter-course">
+        <option value="">All</option>
+        {% for item in courses %}
+          <option value="{{ item.id }}"{% if assessment_filter_course_campus_scoped %} data-allowed-campuses="{{ allowed_campuses_by_course.get(item.id, [])|join('|') }}"{% endif %} {{ 'selected' if request.args.get('course_id') == item.id|string }}>{{ item.code }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Outcome
+      <select name="outcome_id">
+        <option value="">All</option>
+        {% for item in outcomes %}
+          <option value="{{ item.id }}" {{ 'selected' if request.args.get('outcome_id') == item.id|string }}>{{ item.code }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="button secondary">Apply filters</button>
+  </form>
+</section>
+
+{% if bulk_approval_available and records %}
+<form method="post" action="{{ url_for('platform.bulk_approve_assessments') }}" class="bulk-approval-form" data-bulk-approval-form novalidate>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="filter_status" value="{{ request.args.get('status', '') }}">
+  <input type="hidden" name="filter_term_id" value="{{ request.args.get('term_id', '') }}">
+  <input type="hidden" name="filter_course_id" value="{{ request.args.get('course_id', '') }}">
+  <input type="hidden" name="filter_outcome_id" value="{{ request.args.get('outcome_id', '') }}">
+  <input type="hidden" name="filter_campus" value="{{ request.args.get('campus', '') }}">
+
+  <section class="panel bulk-approval-panel no-print" aria-labelledby="bulk-approval-heading">
+    <div class="bulk-approval-intro">
+      <div>
+        <p class="eyebrow">Administrator review</p>
+        <h2 id="bulk-approval-heading">Approve multiple records</h2>
+        <p class="muted">Choose individual records, one or more courses, or every eligible record matching the filters above. Draft records will be submitted and approved in the same audited action.</p>
+      </div>
+      <span class="bulk-eligible-count"><strong>{{ approval.eligible_count }}</strong> eligible in this view</span>
+    </div>
+
+    {% if approval.eligible_count %}
+      <fieldset class="bulk-mode-fieldset">
+        <legend>What would you like to approve?</legend>
+        <div class="bulk-mode-grid">
+          <label>
+            <input type="radio" name="selection_mode" value="records" checked>
+            <span><strong>Selected records</strong><small>Use the checkboxes in the table.</small></span>
+          </label>
+          <label>
+            <input type="radio" name="selection_mode" value="courses">
+            <span><strong>Selected courses</strong><small>Approve eligible records for chosen courses.</small></span>
+          </label>
+          <label>
+            <input type="radio" name="selection_mode" value="all">
+            <span><strong>All matching records</strong><small>Approve every eligible result from the current filters.</small></span>
+          </label>
+        </div>
+      </fieldset>
+
+      <div class="bulk-scope-controls" data-bulk-record-controls>
+        <div>
+          <strong>Select assessment records</strong>
+          <small>Only draft and submitted records can be selected.</small>
+        </div>
+        <div class="bulk-selection-buttons">
+          <button class="link-button dark" type="button" data-bulk-select-records>Select all visible</button>
+          <button class="link-button dark" type="button" data-bulk-clear-records>Clear</button>
+        </div>
+      </div>
+
+      <fieldset class="bulk-course-picker" data-bulk-course-controls hidden>
+        <legend>Select courses</legend>
+        <p class="muted">Course approval is limited to eligible records that also match the filters above.</p>
+        <div class="bulk-selection-buttons">
+          <button class="link-button dark" type="button" data-bulk-select-courses>Select all available courses</button>
+          <button class="link-button dark" type="button" data-bulk-clear-courses>Clear</button>
+        </div>
+        <div class="bulk-course-grid">
+          {% for course in courses %}
+            {% set course_approval = namespace(count=0) %}
+            {% for row in records %}
+              {% if row.course_id == course.id and row.status in ('draft', 'submitted') %}
+                {% set course_approval.count = course_approval.count + 1 %}
+              {% endif %}
+            {% endfor %}
+            {% if course_approval.count %}
+              <label>
+                <input type="checkbox" name="course_ids" value="{{ course.id }}" data-bulk-course-checkbox>
+                <span><strong>{{ course.code }}</strong><small>{{ course_approval.count }} eligible {{ 'record' if course_approval.count == 1 else 'records' }}</small></span>
+              </label>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div class="bulk-all-message" data-bulk-all-controls hidden>
+        <strong>All {{ approval.eligible_count }} eligible records in this filtered view will be approved.</strong>
+        <span>Approved and returned records will not be changed.</span>
+      </div>
+
+      <div class="bulk-action-bar">
+        <p class="bulk-selection-status" data-bulk-selection-status role="status" aria-live="polite">No records selected.</p>
+        <button class="button primary" type="submit" data-bulk-approve-button disabled>Approve selected records</button>
+      </div>
+    {% else %}
+      <div class="bulk-no-results" role="status">
+        <strong>No records in this view are ready for approval.</strong>
+        <span>Adjust the filters to show draft or submitted records.</span>
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="panel flush">
+{% else %}
+  <section class="panel flush">
+{% endif %}
+{% if records %}
+  <div class="table-wrap">
+    <table class="assessment-record-table">
+      <thead>
+        <tr>
+          {% if bulk_approval_available %}
+            <th class="record-select-column no-print" scope="col">
+              <label class="record-select-all">
+                <input type="checkbox" data-bulk-record-master aria-label="Select all eligible records currently shown">
+                <span>Approve</span>
+              </label>
+            </th>
+          {% endif %}
+          <th scope="col">Campus</th>
+          <th scope="col">Term</th>
+          <th scope="col">Course</th>
+          <th scope="col">Outcome / indicator</th>
+          <th scope="col">Method</th>
+          <th scope="col">{{ 'EPAN distribution' if config.EDITION == 'utrgv_mece' else 'Sample' }}</th>
+          <th scope="col">Attainment</th>
+          <th scope="col">Target</th>
+          <th scope="col">Status</th>
+          <th scope="col">Owner / change note</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in records %}
+          {% set row_is_eligible = bulk_approval_available and row.status in ('draft', 'submitted') %}
+          <tr class="{{ 'bulk-selectable-row' if row_is_eligible }}">
+            {% if bulk_approval_available %}
+              <td class="record-select-cell no-print">
+                {% if row_is_eligible %}
+                  <input type="checkbox" name="record_ids" value="{{ row.id }}" data-bulk-record-checkbox data-course-id="{{ row.course_id }}" aria-label="Select {{ row.course_code }}, {{ row.term_label }}, {{ row.status }} record for approval">
+                {% else %}
+                  <span aria-hidden="true">—</span><span class="sr-only">This record is not eligible for bulk approval.</span>
+                {% endif %}
+              </td>
+            {% endif %}
+            <td><span class="campus-badge {{ 'unassigned' if row.campus == 'Unassigned' }}">{{ 'Not recorded' if row.campus == 'Unassigned' else row.campus }}</span></td>
+            <td>{{ row.term_label }}</td>
+            <td><a href="{{ url_for('platform.assessment_edit', record_id=row.id) }}"><strong>{{ row.course_label }}</strong></a></td>
+            <td><strong>{{ row.outcome_label.split(':',1)[0] }}</strong><small class="block">{{ row.indicator_label }}</small></td>
+            <td>{{ row.method|title }}<small class="block">{{ row.assessment_tool }}</small>{% if row.legacy_import_id %}<small class="block">Source row #{{ row.legacy_source_record_id }}</small>{% endif %}</td>
+            <td>{% if row.result_basis == 'percentages' %}<strong>E {{ row.expert_percent }}% · P {{ row.practitioner_percent }}%</strong><small class="block">A {{ row.apprentice_percent }}% · N {{ row.novice_percent }}%</small>{% else %}{{ row.sample_size }}{% endif %}</td>
+            <td><strong class="{{ 'text-good' if row.attainment >= row.target else 'text-risk' }}">{{ row.attainment }}%</strong></td>
+            <td>{{ row.target }}%</td>
+            <td><span class="status {{ row.status }}">{{ row.status }}</span></td>
+            <td>{{ 'Edinburg source' if row.legacy_import_id else row.collector_name }}{% if row.admin_revision_count %}<small class="block admin-change-summary"><strong>Administrator changed:</strong> {{ row.admin_change_note }}<br>{{ row.admin_changed_by }} · {{ row.admin_changed_at }}</small>{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="empty-state">
+    <h2>No records match these filters</h2>
+    <p>Start a new assessment or broaden the filters.</p>
+    <a class="button primary" href="{{ url_for('platform.assessment_new') }}">New assessment</a>
+  </div>
+{% endif %}
+</section>
+{% if bulk_approval_available and records %}</form>{% endif %}
+
+{% if g.membership.role in ('owner','admin','coordinator') %}
+<section class="panel">
+  <div class="panel-head">
+    <div><p class="eyebrow">Bulk collection</p><h2>Import configured assessment data</h2></div>
+    <a href="{{ url_for('platform.import_template') }}">Download template →</a>
+  </div>
+  <form method="post" action="{{ url_for('platform.import_csv') }}" enctype="multipart/form-data" class="inline import-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Assessment CSV<input type="file" name="file" accept=".csv" required></label>
+    <button class="button secondary">Import as drafts</button>
+  </form>
+  <p class="muted">{% if config.EDITION == 'utrgv_mece' %}Campus and every assessment field are required. Enter Expert, Practitioner, Apprentice, and Novice as percentages; each row must total exactly 100%.{% else %}Use configured term, course, outcome, indicator, and rubric names exactly. Rubric-level columns contain student counts and must total the sample size.{% endif %}</p>
+</section>
+{% endif %}
+{% endblock %}

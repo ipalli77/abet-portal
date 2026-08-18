@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}Sign in · {{ config.PRODUCT_NAME }}{% endblock %}
+{% block main_class %}auth-shell{% endblock %}
+{% block content %}
+<section class="auth-card">
+  <div class="brand brand-large"><span class="brand-mark">A</span>{{ config.PRODUCT_NAME }}</div>
+  <p class="eyebrow">{{ config.CUSTOMER_NAME or 'Engineering accreditation intelligence' }}</p>
+  <h1>Sign in</h1>
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Email or faculty sign-in name<input name="login" autocomplete="username" required autofocus></label>
+    <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+    <button class="button primary" type="submit">Sign in</button>
+  </form>
+  <a href="{{ url_for('platform.forgot_password') }}">Forgot password?</a>
+</section>
+{% endblock %}

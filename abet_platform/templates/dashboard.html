@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Overview · {{ program.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><p class="eyebrow">{{ program.commission }} accreditation workspace</p><h1>{{ program.name }}</h1><p class="muted">A live view of evidence readiness, attainment, and improvement work.</p></div>
+  <div class="head-actions">
+    {% if programs|length > 1 %}<form method="post" action="{{ url_for('platform.select_program') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="next" value="{{ request.path }}"><select name="program_id" onchange="this.form.submit()">{% for item in programs %}<option value="{{ item.id }}" {{ 'selected' if item.id == program.id }}>{{ item.code }} · {{ item.name }}</option>{% endfor %}</select></form>{% endif %}
+    <a class="button primary" href="{{ url_for('platform.assessment_new') }}">New assessment</a>
+  </div>
+</div>
+<section class="metrics">
+  <article><span>Approved evidence</span><strong>{{ metrics.approved }}</strong><small>{{ metrics.total }} total records</small></article>
+  <article><span>Outcomes meeting target</span><strong>{{ metrics.met_rate }}%</strong><small>{{ metrics.met }} approved measures</small></article>
+  <article><span>Mean attainment</span><strong>{{ metrics.average }}%</strong><small>Approved records only</small></article>
+  <article><span>Awaiting review</span><strong>{{ metrics.submitted }}</strong><small>{{ metrics.draft }} working drafts</small></article>
+</section>
+<div class="split">
+  <section class="panel">
+    <div class="panel-head"><div><p class="eyebrow">Outcome health</p><h2>Attainment by student outcome</h2></div><a href="{{ url_for('platform.analytics') }}">Explore analysis →</a></div>
+    {% if outcome_summary %}<div class="bar-list">{% for item in outcome_summary %}<div class="bar-row"><div><strong>{{ item.label.split(':',1)[0] }}</strong><span>{{ item.average if item.average is not none else '—' }}%</span></div><div class="bar-track"><i class="{{ 'met' if item.met else 'missed' }}" style="width:{{ item.average or 0 }}%"></i><b style="left:{{ item.target }}%" title="Target {{ item.target }}%"></b></div><small>{{ item.approved }} approved measure{{ '' if item.approved == 1 else 's' }} · target {{ item.target }}%</small></div>{% endfor %}</div>{% else %}<div class="empty-compact">Approve assessment records to populate outcome health.</div>{% endif %}
+  </section>
+  <section class="panel">
+    <div class="panel-head"><div><p class="eyebrow">Close the loop</p><h2>Open improvement actions</h2></div><a href="{{ url_for('platform.actions') }}">Manage →</a></div>
+    {% if actions %}<div class="activity">{% for action in actions %}<article><span class="status {{ action.status }}">{{ action.status.replace('_',' ') }}</span><strong>{{ action.title }}</strong><small>{{ action.outcome_code or 'Program-wide' }} · {{ action.owner_name or 'Unassigned' }}{% if action.due_on %} · due {{ action.due_on }}{% endif %}</small></article>{% endfor %}</div>{% else %}<div class="empty-compact">No open actions. Add one when evidence suggests a change.</div>{% endif %}
+  </section>
+</div>
+<section class="panel">
+  <div class="panel-head"><div><p class="eyebrow">Latest evidence</p><h2>Recent assessment records</h2></div><a href="{{ url_for('platform.assessments') }}">View all →</a></div>
+  {% if recent %}<div class="table-wrap"><table><thead><tr><th>Campus</th><th>Term</th><th>Course</th><th>Outcome</th><th>Attainment</th><th>Target</th><th>Status</th></tr></thead><tbody>{% for row in recent %}<tr><td><span class="campus-badge {{ 'unassigned' if row.campus == 'Unassigned' }}">{{ 'Not recorded' if row.campus == 'Unassigned' else row.campus }}</span></td><td>{{ row.term_label }}</td><td><a href="{{ url_for('platform.assessment_edit', record_id=row.id) }}">{{ row.course_label }}</a></td><td>{{ row.outcome_label.split(':',1)[0] }}</td><td><strong>{{ row.attainment }}%</strong></td><td>{{ row.target }}%</td><td><span class="status {{ row.status }}">{{ row.status }}</span></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty-compact">No assessments yet.</div>{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ config.PRODUCT_NAME }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+</head>
+<body{% if brand_style %} style="{{ brand_style }}"{% endif %} class="edition-{{ config.EDITION }}">
+{% if g.user %}
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('platform.dashboard') }}"><span class="brand-mark">A</span>{{ config.PRODUCT_NAME }}</a>
+    <nav aria-label="Primary navigation">
+      <a href="{{ url_for('platform.dashboard') }}">Overview</a>
+      <a href="{{ url_for('platform.assessments') }}">Assessment</a>
+      <a href="{{ url_for('platform.analytics') }}">Analysis</a>
+      <a href="{{ url_for('platform.actions') }}">Improvement</a>
+      <a href="{{ url_for('platform.report') }}">Report</a>
+      {% if g.membership.role in ('owner','admin','coordinator') %}<a href="{{ url_for('platform.configuration') }}">Configure</a>{% endif %}
+    </nav>
+    <div class="account">
+      <a href="{{ url_for('platform.change_password') }}">{{ g.user.full_name }}</a>
+      <span class="role">{{ g.membership.role }}</span>
+      <form action="{{ url_for('platform.logout') }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="link-button" type="submit">Sign out</button>
+      </form>
+    </div>
+  </header>
+  {% if g.faculty_preview|default(false) %}
+    <aside class="faculty-view-banner" aria-label="Faculty View support login">
+      <div class="faculty-view-banner-inner">
+        <div class="faculty-view-banner-title">
+          <span class="faculty-view-indicator" aria-hidden="true">FV</span>
+          <div>
+            <strong>Faculty View support login</strong>
+            <span>{{ g.faculty_preview.scope_summary|default('Choose a course and campus scope before continuing.', true) }}</span>
+          </div>
+        </div>
+        <p><strong>This is not a sandbox.</strong> {{ g.faculty_preview.write_warning|default('Records created or edited here are real, saved, audited, and attributed to this support login.', true) }}</p>
+        <a class="button faculty-view-switch" href="{{ url_for('platform.utrgv_support_scope') }}">Switch faculty view</a>
+      </div>
+    </aside>
+  {% endif %}
+{% endif %}
+<main class="{% block main_class %}shell{% endblock %}">
+  {% for category, message in get_flashed_messages(with_categories=true) %}
+    <div class="flash {{ category }}" role="status">{{ message }}</div>
+  {% endfor %}
+  {% block content %}{% endblock %}
+</main>
+<footer>{{ config.PRODUCT_NAME }} · Evidence-centered continuous improvement{% if config.CUSTOMER_NAME %} · {{ config.CUSTOMER_NAME }}{% endif %}</footer>
+</body>
+</html>

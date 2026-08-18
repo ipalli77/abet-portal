@@ -1,0 +1,232 @@
+{% extends 'base.html' %}
+{% block title %}Users · {{ program.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Administration</p>
+    <h1>Users and scoped access</h1>
+    {% if config.EDITION == 'utrgv_mece' %}
+      <p class="muted">This view includes every owner and administrator account plus every approved UTRGV faculty invitation. Faculty access is limited to the exact course–campus combinations shown for their approved email.</p>
+    {% else %}
+      <p class="muted">Roles govern platform capabilities; course assignments narrow faculty collection access.</p>
+    {% endif %}
+  </div>
+  <div class="head-actions">
+    {% if config.EDITION == 'utrgv_mece' %}<a class="button primary" href="{{ url_for('platform.utrgv_faculty') }}">UTRGV faculty roster</a>{% endif %}
+    <a class="button secondary" href="{{ url_for('platform.audit_log') }}">View audit history</a>
+  </div>
+</div>
+{% if config.EDITION == 'utrgv_mece' and g.membership.role == 'owner' %}
+  {% set preview_account = support_account|default(none) %}
+  <section class="panel faculty-view-admin" id="faculty-view-support" aria-labelledby="faculty-view-support-heading">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Owner-only support access</p>
+        <h2 id="faculty-view-support-heading">Faculty View support login</h2>
+        <p class="muted">A single, separately marked faculty account lets authorized support staff verify exactly what a faculty member can see for one course and one or both campuses.</p>
+      </div>
+      <span class="status {{ 'approved' if preview_account and preview_account.is_active else 'returned' if preview_account else 'draft' }}">{{ 'Active' if preview_account and preview_account.is_active else 'Disabled' if preview_account else 'Not configured' }}</span>
+    </div>
+    <div class="faculty-view-admin-grid">
+      <div class="faculty-view-explanation">
+        <div class="faculty-view-warning" role="note">
+          <strong>Privileged support credential</strong>
+          <p>Keep this login separate from every real faculty account and share it only through an approved support channel. It has the normal Faculty role—never owner or administrator privileges.</p>
+        </div>
+        <ul class="faculty-view-rules">
+          <li>The support user selects exactly one active course and Edinburg, Brownsville, or both after signing in.</li>
+          <li>Changing scope affects every browser session using this one support account.</li>
+          <li>Existing faculty-owned records may be read-only because normal record-ownership rules still apply.</li>
+          <li><strong>Any record this account creates or edits is real, audited, and attributed to the support login.</strong></li>
+        </ul>
+      </div>
+      {% if preview_account %}
+        <div class="faculty-view-account-card">
+          <dl>
+            <div><dt>Account</dt><dd>Faculty View Support <small class="block">Fixed provenance name</small></dd></div>
+            <div><dt>Sign-in</dt><dd>{{ preview_account.username|default(preview_account.email, true) }}</dd></div>
+            <div><dt>Email</dt><dd>{{ preview_account.email }}</dd></div>
+            <div><dt>Role</dt><dd>Faculty (fixed)</dd></div>
+            <div><dt>Current scope</dt><dd>{{ preview_account.scope_summary|default('Not selected yet', true) }}</dd></div>
+          </dl>
+          {% if preview_account.must_change_password %}<p class="status returned">Password change required at next sign-in</p>{% endif %}
+          <details class="account-recovery faculty-view-password-reset">
+            <summary>Edit support sign-in identity</summary>
+            <form method="post" action="{{ url_for('platform.utrgv_support_account') }}" class="stack compact">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="update">
+              <div class="faculty-view-fixed-name"><span>Account display name</span><strong>Faculty View Support</strong><small>Fixed so assessment and audit provenance cannot be renamed.</small></div>
+              <label>Institutional email<input type="email" name="email" value="{{ preview_account.email }}" required></label>
+              <label>Sign-in name <small>(optional)</small><input name="username" value="{{ preview_account.username or '' }}" autocomplete="username"></label>
+              <button class="button secondary" type="submit">Save support identity</button>
+            </form>
+          </details>
+          {% if preview_account.is_active %}
+          <details class="account-recovery faculty-view-password-reset">
+            <summary>Set a new temporary password</summary>
+            <form method="post" action="{{ url_for('platform.utrgv_support_account') }}" class="stack compact">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="reset_password">
+              <label>Temporary password<input type="password" name="temporary_password" minlength="12" autocomplete="new-password" required><small>At least 12 characters</small></label>
+              <label>Confirm temporary password<input type="password" name="confirm_temporary_password" minlength="12" autocomplete="new-password" required></label>
+              <button class="button secondary" type="submit">Reset support password</button>
+            </form>
+          </details>
+          <form method="post" action="{{ url_for('platform.utrgv_support_account') }}" class="faculty-view-disable-form" data-confirm="Disable the Faculty View support login? Every active session for this account will lose access.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="disable">
+            <button class="button danger small" type="submit">Disable support login</button>
+          </form>
+          {% else %}
+          <details class="account-recovery faculty-view-password-reset" open>
+            <summary>Reactivate with a temporary password</summary>
+            <form method="post" action="{{ url_for('platform.utrgv_support_account') }}" class="stack compact">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="reactivate">
+              <label>Temporary password<input type="password" name="temporary_password" minlength="12" autocomplete="new-password" required><small>At least 12 characters</small></label>
+              <label>Confirm temporary password<input type="password" name="confirm_temporary_password" minlength="12" autocomplete="new-password" required></label>
+              <button class="button primary" type="submit">Reactivate support login</button>
+            </form>
+          </details>
+          {% endif %}
+        </div>
+      {% else %}
+        <form method="post" action="{{ url_for('platform.utrgv_support_account') }}" class="stack faculty-view-create-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="create">
+          <div class="faculty-view-fixed-name"><span>Account display name</span><strong>Faculty View Support</strong><small>Fixed so every saved record and audit event has unambiguous support provenance.</small></div>
+          <label>Institutional email<input type="email" name="email" placeholder="support account email" required></label>
+          <label>Sign-in name <small>(optional)</small><input name="username" autocomplete="username"></label>
+          <label>Temporary password<input type="password" name="temporary_password" minlength="12" autocomplete="new-password" required><small>At least 12 characters; the account must replace it at first sign-in.</small></label>
+          <label>Confirm temporary password<input type="password" name="confirm_temporary_password" minlength="12" autocomplete="new-password" required></label>
+          <button class="button primary" type="submit">Create Faculty View login</button>
+        </form>
+      {% endif %}
+    </div>
+  </section>
+{% endif %}
+<div class="{{ 'stack gap-large' if config.EDITION == 'utrgv_mece' else 'split asymmetric reverse' }}">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Institution roster</p>
+        <h2>{% if config.EDITION == 'utrgv_mece' %}People and approved faculty{% else %}People with access{% endif %}</h2>
+        {% if config.EDITION == 'utrgv_mece' %}<p class="muted">Pending faculty are approved for the listed course–campus combinations but cannot sign in until an administrator activates their account.</p>{% endif %}
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="access-roster">
+        <thead><tr><th>Name</th><th>Sign-in</th><th>Role</th><th>Program access</th><th>{{ 'Assigned course–campus access' if config.EDITION == 'utrgv_mece' else 'Assigned courses' }}</th>{% if config.EDITION == 'utrgv_mece' %}<th>Status</th>{% endif %}<th>Account access and recovery</th></tr></thead>
+        <tbody>
+          {% for item in users %}
+            <tr>
+              <td><strong>{{ item.full_name }}</strong></td>
+              <td>{{ item.username or item.email }}<small class="block">{{ item.email }}</small></td>
+              <td><span class="role">{{ item.role }}</span></td>
+              <td>{{ item.access_level or 'None' }}</td>
+              <td>{% if item.role in ('owner', 'admin', 'coordinator') %}<strong>All courses (unrestricted)</strong>{% else %}{{ item.courses or 'No courses assigned' }}{% endif %}</td>
+              {% if config.EDITION == 'utrgv_mece' %}
+                <td><span class="status {{ 'approved' if item.is_active else 'returned' }}">{{ 'Active' if item.is_active else 'Inactive' }}</span></td>
+              {% endif %}
+              <td>
+                {% if item.must_change_password %}<span class="status returned">Password change required</span>{% endif %}
+                {% if item.id == g.user.id %}
+                  <small class="block">Use Change password in your account menu.</small>
+                {% elif not item.is_active %}
+                  <small class="block">Inactive account</small>
+                {% elif g.membership.role != 'owner' and item.role in ('owner', 'admin') %}
+                  <small class="block">Only the owner can reset this account.</small>
+                {% else %}
+                  <details class="account-recovery">
+                    <summary>Set temporary password</summary>
+                    <form method="post" action="{{ url_for('platform.set_temporary_password', user_id=item.id) }}" class="stack compact">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="next" value="{{ url_for('platform.users') }}">
+                      <label>Temporary password<input type="password" name="temporary_password" minlength="12" autocomplete="new-password" required><small>At least 12 characters</small></label>
+                      <label>Confirm temporary password<input type="password" name="confirm_temporary_password" minlength="12" autocomplete="new-password" required></label>
+                      <button class="button secondary small" type="submit">Set temporary password</button>
+                    </form>
+                  </details>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          {% if config.EDITION == 'utrgv_mece' %}
+            {% for item in faculty_roster %}
+              <tr class="roster-faculty-row">
+                <td>
+                  <strong>{{ item.display_name }}</strong>
+                  <small class="block">Approved faculty invitation</small>
+                </td>
+                <td>
+                  <strong>{{ item.approved_email }}</strong>
+                  {% if item.username %}
+                    <small class="block">Sign-in name: {{ item.username }}</small>
+                  {% else %}
+                    <small class="block">Approved email · account not activated</small>
+                  {% endif %}
+                </td>
+                <td><span class="role">Faculty</span></td>
+                <td>{{ item.access_level or 'Starts after activation' }}</td>
+                <td><strong>{{ item.course_campus_summary or item.courses or 'No course–campus access approved' }}</strong></td>
+                <td>
+                  <span class="status {{ item.status_class }}">{{ item.account_status }}</span>
+                  {% if item.account_status == 'Pending activation' %}
+                    <small class="block">Cannot sign in until activated.</small>
+                  {% elif item.account_status == 'Inactive' %}
+                    <small class="block">Sign-in is disabled.</small>
+                  {% elif item.must_change_password %}
+                    <small class="block">Password change required at next sign-in.</small>
+                  {% endif %}
+                </td>
+                <td>
+                  <div class="roster-actions">
+                    {% if item.account_status == 'Pending activation' %}
+                      <a class="button secondary small" href="{{ url_for('platform.utrgv_faculty') }}#faculty-{{ item.roster_id }}">Activate in faculty roster</a>
+                    {% else %}
+                      <a href="{{ url_for('platform.utrgv_faculty') }}#faculty-{{ item.roster_id }}">Manage approved access</a>
+                    {% endif %}
+                    {% if item.account_status == 'Active' %}
+                      <details class="account-recovery">
+                        <summary>Set temporary password</summary>
+                        <form method="post" action="{{ url_for('platform.set_temporary_password', user_id=item.user_id) }}" class="stack compact">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <input type="hidden" name="next" value="{{ url_for('platform.users') }}">
+                          <label>Temporary password<input type="password" name="temporary_password" minlength="12" autocomplete="new-password" required><small>At least 12 characters</small></label>
+                          <label>Confirm temporary password<input type="password" name="confirm_temporary_password" minlength="12" autocomplete="new-password" required></label>
+                          <button class="button secondary small" type="submit">Set temporary password</button>
+                        </form>
+                      </details>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <aside class="panel">
+    <p class="eyebrow">Add or update {{ 'non-faculty ' if config.EDITION == 'utrgv_mece' else '' }}user</p>
+    <h2>Grant program access</h2>
+    {% if config.EDITION == 'utrgv_mece' %}
+      <p class="callout">Faculty accounts are invitation-only. The owner approves each UTRGV email and exact course–campus scope on the <a href="{{ url_for('platform.utrgv_faculty') }}">faculty roster</a>; an administrator can then activate it.</p>
+    {% endif %}
+    <form method="post" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Full name<input name="full_name" required></label>
+      <label>Sign-in name (optional)<input name="username"></label>
+      <label>Email<input type="email" name="email" required></label>
+      <label>Role<select name="role">{% if config.EDITION != 'utrgv_mece' %}<option value="faculty">Faculty</option>{% endif %}<option value="reviewer">Reviewer</option><option value="coordinator">Coordinator</option>{% if g.membership.role == 'owner' %}<option value="admin">Administrator</option>{% endif %}</select></label>
+      <label>Temporary password<input type="password" name="temporary_password" minlength="12" autocomplete="new-password" required><small>The user must replace it at first sign-in.</small></label>
+      <fieldset>
+        <legend>Assigned courses</legend>
+        <div class="check-grid">{% for course in courses %}<label><input type="checkbox" name="course_ids" value="{{ course.id }}"> {{ course.code }}</label>{% endfor %}</div>
+        <small>{% if config.EDITION == 'utrgv_mece' %}Course-scoped faculty access is managed only on the faculty roster.{% else %}Faculty may enter evidence only for their assigned courses.{% endif %}</small>
+      </fieldset>
+      <button class="button primary">Save access</button>
+    </form>
+  </aside>
+</div>
+{% endblock %}

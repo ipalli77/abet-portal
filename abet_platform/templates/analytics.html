@@ -1,0 +1,453 @@
+{% extends 'base.html' %}
+{% block title %}Analysis · {{ program.name }}{% endblock %}
+
+{% macro chart_figure(chart, height='') %}
+  {% if chart.available %}
+    <div class="chart-frame {{ height }}">
+      <img src="{{ chart.data_uri }}" alt="{{ chart.alt_text }}">
+    </div>
+  {% else %}
+    <div class="chart-unavailable" role="status">
+      <strong>Chart unavailable for this selection</strong>
+      <span>{{ chart.reason or 'More evidence is needed to build this chart.' }}</span>
+    </div>
+  {% endif %}
+  {% if chart.insights %}
+    <aside class="chart-insights" aria-label="Key observations for {{ chart.title or 'this chart' }}">
+      <strong>Key observations</strong>
+      <ul>
+        {% for insight in chart.insights %}<li>{{ insight }}</li>{% endfor %}
+      </ul>
+    </aside>
+  {% endif %}
+{% endmacro %}
+
+{% macro summary_bars(items, empty_message) %}
+  {% if items %}
+    <div class="bar-list large">
+      {% for item in items %}
+        <div class="bar-row">
+          <div>
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.mean|round(1) if item.mean is not none else '—' }}{% if item.mean is not none %}%{% endif %}</span>
+          </div>
+          {% if item.mean is not none %}
+            <div class="bar-track" role="img" aria-label="{{ item.label }}: mean attainment {{ item.mean|round(1) }} percent; mean target {{ item.target|round(1) }} percent; {{ item.met_count }} of {{ item.count }} measures met their targets.">
+              <i class="{{ 'met' if item.meets_target else 'missed' }}" style="width:{{ item.mean }}%"></i>
+              <b style="left:{{ item.target }}%" title="Mean target {{ item.target|round(1) }}%"></b>
+            </div>
+            <small>{{ item.met_count }} of {{ item.count }} measures met target · mean target {{ item.target|round(1) }}% · median {{ item.median|round(1) }}%</small>
+          {% else %}
+            <div class="bar-track" aria-hidden="true"></div>
+            <small>No usable attainment value.</small>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-compact">{{ empty_message }}</div>
+  {% endif %}
+{% endmacro %}
+
+{% macro summary_table(items, dimension_label, caption_text) %}
+  <div class="table-wrap">
+    <table class="analysis-table">
+      <caption>{{ caption_text }}</caption>
+      <thead>
+        <tr><th scope="col">{{ dimension_label }}</th><th scope="col" class="number">Measures</th><th scope="col" class="number">Mean</th><th scope="col" class="number">Median</th><th scope="col" class="number">Range</th><th scope="col" class="number">Mean target</th><th scope="col" class="number">Met target</th></tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+          <tr>
+            <th scope="row">{{ item.label }}</th>
+            <td class="number">{{ item.count }}</td>
+            <td class="number">{{ item.mean|round(1) if item.mean is not none else '—' }}{% if item.mean is not none %}%{% endif %}</td>
+            <td class="number">{{ item.median|round(1) if item.median is not none else '—' }}{% if item.median is not none %}%{% endif %}</td>
+            <td class="number">{% if item.minimum is not none %}{{ item.minimum|round(1) }}–{{ item.maximum|round(1) }}%{% else %}—{% endif %}</td>
+            <td class="number">{{ item.target|round(1) if item.target is not none else '—' }}{% if item.target is not none %}%{% endif %}</td>
+            <td class="number">{{ item.met_count }} / {{ item.count }}{% if item.met_rate is not none %} ({{ item.met_rate }}%){% endif %}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7">No matching evidence.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endmacro %}
+
+{% block content %}
+{% set term_options = terms %}
+{% set course_options = courses %}
+{% set outcome_options = outcomes %}
+{% set indicator_options = indicators %}
+{% set analysis_course_campus_scoped = allowed_campuses_by_course is defined and allowed_campuses_by_course is not none %}
+
+<div class="page-head analysis-page-head">
+  <div>
+    <p class="eyebrow">Decision intelligence</p>
+    <h1>Flexible attainment analysis</h1>
+    <p class="muted">Compare one course, several courses, or the full curriculum. Every graphic is paired with its underlying values for review, printing, and accessible interpretation.</p>
+  </div>
+  <div class="head-actions no-print">
+    <a class="button secondary" href="{{ export_url }}">Export this selection</a>
+    <button class="button primary" type="button" data-print>Print analysis</button>
+  </div>
+</div>
+
+<section class="panel filter-panel no-print" aria-labelledby="analysis-filter-heading">
+  <div class="panel-head"><div><h2 id="analysis-filter-heading">Choose the evidence to analyze</h2><p>At least one course is required. Leaving the other filters at “All” includes every available value.</p></div></div>
+  <form method="get" class="analysis-filters"{% if analysis_course_campus_scoped %} data-analysis-course-campus-scoped{% endif %}>
+    <input type="hidden" name="course_selection" value="explicit">
+    <div class="filter-grid">
+      <label>Term
+        <select name="term_id">
+          <option value="">All terms</option>
+          {% for item in term_options %}<option value="{{ item.id }}" {{ 'selected' if request.args.get('term_id') == item.id|string }}>{{ item.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Outcome
+        <select name="outcome_id" id="analysis-outcome">
+          <option value="">All outcomes</option>
+          {% for item in outcome_options %}<option value="{{ item.id }}" {{ 'selected' if request.args.get('outcome_id') == item.id|string }}>{{ item.code }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Performance indicator
+        <select name="indicator_id">
+          <option value="">All indicators</option>
+          {% for item in indicator_options %}<option value="{{ item.id }}" data-outcome="{{ item.outcome_id }}" {{ 'selected' if request.args.get('indicator_id') == item.id|string }}>{{ item.code }} · {{ item.description|truncate(45) }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Method
+        <select name="method">
+          <option value="">Direct + indirect</option>
+          <option value="direct" {{ 'selected' if request.args.get('method') == 'direct' }}>Direct only</option>
+          <option value="indirect" {{ 'selected' if request.args.get('method') == 'indirect' }}>Indirect only</option>
+        </select>
+      </label>
+      <label>Evidence scope
+        <select name="evidence_scope">
+          <option value="approved" {{ 'selected' if evidence_scope == 'approved' }}>Approved evidence only</option>
+          <option value="all" {{ 'selected' if evidence_scope == 'all' }}>Preview all workflow states</option>
+        </select>
+      </label>
+      {% if config.EDITION == 'utrgv_mece' %}<label>Organize campus comparison by
+        <select name="comparison_group">
+          {% for value, label in (('term','Academic term'),('course','Course'),('outcome','Student outcome'),('indicator','Performance indicator')) %}<option value="{{ value }}" {{ 'selected' if comparison_group == value }}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>{% endif %}
+    </div>
+    {% if config.EDITION == 'utrgv_mece' %}<fieldset class="campus-picker">
+      <legend>Campus evidence to include</legend>
+      <input type="hidden" name="campus_selection" value="explicit">
+      <div class="campus-choice-grid">
+        {% for campus in campuses %}<label><input type="checkbox" name="campus" value="{{ campus }}" {{ 'checked' if campus in selected_campuses }}> <span><strong>{{ campus }}</strong><small>{{ campus }} campus assessment measures</small></span></label>{% endfor %}
+      </div>
+      <small>{% if analysis_course_campus_scoped %}Only campuses included in your approved course–campus access are shown. Select one or more to narrow the available courses.{% else %}Select both campuses to display the Edinburg–Brownsville comparison. Select one for a campus-specific analysis.{% endif %}</small>
+    </fieldset>{% endif %}
+    <fieldset class="course-picker">
+      <legend>Courses to compare</legend>
+      <div class="course-picker-actions">
+        <button type="button" class="link-button dark" data-course-select-all>Select all</button>
+        <button type="button" class="link-button dark" data-course-clear>Clear</button>
+        <small data-analysis-course-campus-help role="status" aria-live="polite">Select one or more of the courses you are authorized to view.</small>
+      </div>
+      <div class="course-choice-grid">
+        {% for item in course_options %}
+          <label><input type="checkbox" name="course_id" value="{{ item.id }}"{% if analysis_course_campus_scoped %} data-allowed-campuses="{{ allowed_campuses_by_course.get(item.id, [])|join('|') }}"{% endif %} {{ 'checked' if item.id in selected_course_ids }}> <span><strong>{{ item.code }}</strong><small>{{ item.name }}</small></span></label>
+        {% else %}
+          <p class="muted">No courses are assigned to this account.</p>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div class="filter-actions"><a class="button secondary" href="{{ url_for('platform.analytics') }}">Reset</a><button class="button primary">Run analysis</button></div>
+  </form>
+</section>
+
+{% if evidence_scope == 'all' %}
+  <div class="flash error analysis-mode-banner" role="status">
+    <p><strong>Exploratory preview.</strong> Results include draft, submitted, returned, and approved evidence. They must not be presented as official accreditation findings. <a href="{{ official_url }}">Return to approved evidence only</a>.</p>
+  </div>
+{% endif %}
+
+<section class="analysis-scope" aria-label="Current analysis scope">
+  <strong>{{ 'Preview' if evidence_scope == 'all' else 'Official' }} scope</strong>
+  <span>{{ scope_metrics.courses }} course{{ '' if scope_metrics.courses == 1 else 's' }}</span>
+  <span>{{ scope_metrics.terms }} term{{ '' if scope_metrics.terms == 1 else 's' }}</span>
+  {% if config.EDITION == 'utrgv_mece' %}<span>{% if selected_campuses|length == 2 %}Edinburg + Brownsville{% else %}{{ selected_campuses|join(', ') }} campus{% endif %}</span>{% endif %}
+  <span>{{ scope_metrics.count }} assessment measure{{ '' if scope_metrics.count == 1 else 's' }}</span>
+  {% if request.args.get('method') %}<span>{{ request.args.get('method')|title }} evidence</span>{% else %}<span>Direct and indirect evidence</span>{% endif %}
+</section>
+
+{% if scope_metrics.count %}
+  <section class="metrics compact analysis-metrics" aria-label="Analysis summary">
+    <article><span>Measures included</span><strong>{{ scope_metrics.count }}</strong><small>{{ scope_metrics.approved }} approved{% if evidence_scope == 'all' %} · {{ scope_metrics.draft }} draft · {{ scope_metrics.submitted }} submitted · {{ scope_metrics.returned }} returned{% endif %}</small></article>
+    <article><span>Mean attainment</span><strong>{{ scope_metrics.average }}%</strong><small>Mean across assessment measures</small></article>
+    <article><span>Measures meeting target</span><strong>{{ scope_metrics.met_rate }}%</strong><small>{{ scope_metrics.met_count }} of {{ scope_metrics.count }} measures</small></article>
+    <article><span>Evidence coverage</span><strong>{{ scope_metrics.courses }}<small>courses</small></strong><small>Across {{ scope_metrics.terms }} term{{ '' if scope_metrics.terms == 1 else 's' }}</small></article>
+  </section>
+
+  <p class="analysis-section-intro">Attainment is Expert + Practitioner for the preserved EPAN rubric, or the percentage in levels configured as attained for another rubric. Summary means give each assessment measure equal weight; imported percentage records are not treated as synthetic student samples.</p>
+
+  {% if config.EDITION == 'utrgv_mece' %}<section class="panel analysis-panel campus-comparison-panel" aria-labelledby="campus-comparison-heading">
+    <div class="panel-head"><div><p class="eyebrow">Campus comparison</p><h2 id="campus-comparison-heading">Edinburg and Brownsville attainment comparison</h2><p>Campus performance is compared descriptively using each assessment measure once and its own configured target.</p></div></div>
+    {% if analysis.campus_comparison.status == 'available' %}
+      <section class="metrics compact campus-kpis" aria-label="Campus comparison summary">
+        {% for item in analysis.campuses if item.label in ('Edinburg','Brownsville') %}<article><span>{{ item.label }} mean</span><strong>{{ item.mean|round(1) }}%</strong><small>{{ item.count }} measure{{ '' if item.count == 1 else 's' }} · target gap {{ '%+.1f'|format(item.target_gap) }} points</small></article>{% endfor %}
+        <article><span>Campus difference</span><strong>{{ '%+.1f'|format(analysis.campus_comparison.attainment_difference) }}</strong><small>{% if analysis.campus_comparison.higher_attainment_campus == 'Tie' %}Equal raw mean attainment{% else %}{{ analysis.campus_comparison.higher_attainment_campus }} has the higher raw mean{% endif %}<br>Target-adjusted: {{ '%+.1f'|format(analysis.campus_comparison.target_gap_difference) }} Brownsville − Edinburg; {% if analysis.campus_comparison.stronger_target_adjusted_campus == 'Tie' %}equal relative to target{% else %}{{ analysis.campus_comparison.stronger_target_adjusted_campus }} is stronger relative to target{% endif %}</small></article>
+        <article><span>Comparable coverage</span><strong>{{ analysis.campus_comparison.comparable_group_count }}/{{ analysis.campus_comparison.group_count }}</strong><small>{{ analysis.campus_comparison.group_dimension|title }} groups with both campuses</small></article>
+      </section>
+    {% endif %}
+    {{ chart_figure(charts.campus_comparison, 'tall') }}
+    <div class="table-wrap campus-comparison-table-wrap" tabindex="0" role="region" aria-label="Scrollable Edinburg and Brownsville comparison values">
+      <table class="analysis-table campus-comparison-table">
+        <caption>Exact campus means by {{ analysis.campus_comparison.group_dimension }}. Each assessment measure has equal weight; missing campus evidence is not converted to zero.</caption>
+        <thead><tr><th scope="col">{{ analysis.campus_comparison.group_dimension|title }}</th><th scope="col">Edinburg attainment</th><th scope="col">Edinburg target / gap</th><th scope="col">Brownsville attainment</th><th scope="col">Brownsville target / gap</th><th scope="col">Brownsville − Edinburg</th></tr></thead>
+        <tbody>
+          {% for group in analysis.campus_comparison.groups %}
+            {% set edinburg = group.campuses['Edinburg'] %}{% set brownsville = group.campuses['Brownsville'] %}
+            <tr><th scope="row">{{ group.label }}</th><td>{% if edinburg %}<strong>{{ edinburg.mean|round(1) }}%</strong><small class="block">{{ edinburg.count }} measure{{ '' if edinburg.count == 1 else 's' }}</small>{% else %}<span class="muted">No evidence</span>{% endif %}</td><td>{% if edinburg %}{{ edinburg.target|round(1) }}% / {{ '%+.1f'|format(edinburg.target_gap) }} points{% else %}—{% endif %}</td><td>{% if brownsville %}<strong>{{ brownsville.mean|round(1) }}%</strong><small class="block">{{ brownsville.count }} measure{{ '' if brownsville.count == 1 else 's' }}</small>{% else %}<span class="muted">No evidence</span>{% endif %}</td><td>{% if brownsville %}{{ brownsville.target|round(1) }}% / {{ '%+.1f'|format(brownsville.target_gap) }} points{% else %}—{% endif %}</td><td>{% if group.comparable %}{{ '%+.1f'|format(group.attainment_difference) }} attainment<br><small>{{ '%+.1f'|format(group.target_gap_difference) }} target-adjusted</small>{% else %}<span class="muted">Not comparable</span>{% endif %}</td></tr>
+          {% else %}<tr><td colspan="6">No campus evidence groups are available.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="analysis-caveat"><strong>Interpret descriptively.</strong> This compares assessment-measure attainment, not individual students and not a causal campus effect. Unequal courses, terms, instruments, student populations, sample sizes, and missing evidence can affect the difference. Imported percentage records are not treated as synthetic student samples.</div>
+  </section>{% endif %}
+
+  <div class="analysis-grid">
+    <section class="panel analysis-panel" aria-labelledby="course-analysis-heading">
+      <div class="panel-head"><div><p class="eyebrow">Course comparison</p><h2 id="course-analysis-heading">Attainment by course</h2><p>Mean measure attainment with each course’s mean target.</p></div></div>
+      {{ chart_figure(charts.course_attainment, 'tall') }}
+      <details class="analysis-data"><summary>View course values</summary>{{ summary_table(analysis.courses, 'Course', 'Course-level statistics for the selected evidence.') }}</details>
+    </section>
+
+    <section class="panel analysis-panel" aria-labelledby="term-analysis-heading">
+      <div class="panel-head"><div><p class="eyebrow">Longitudinal comparison</p><h2 id="term-analysis-heading">Course attainment by term</h2><p>Selected courses are compared chronologically; missing combinations are not converted to zero.</p></div></div>
+      {{ chart_figure(charts.semester_course, 'tall') }}
+      <details class="analysis-data"><summary>View course × term values</summary>
+        <div class="heatmap-wrap term-matrix-wrap" tabindex="0" role="region" aria-label="Scrollable course by term attainment table">
+          <table class="analysis-table heatmap term-matrix">
+            <caption>Mean attainment at each observed course and academic-term intersection. Each assessment measure has equal weight; the cell mean is compared with the mean of those measures’ configured targets.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Course</th>
+                {% for term in analysis.terms %}<th scope="col">{{ term.label }}</th>{% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for course in analysis.courses %}
+                {% set course_rows = analysis.rows|selectattr('course_id', 'equalto', course.key)|list %}
+                <tr>
+                  <th scope="row">
+                    <strong>{{ course.label.split(' — ', 1)[0] }}</strong>
+                    {% if ' — ' in course.label %}<small>{{ course.label.split(' — ', 1)[1] }}</small>{% endif %}
+                  </th>
+                  {% for term in analysis.terms %}
+                    {% set cell_rows = course_rows|selectattr('term_id', 'equalto', term.key)|list %}
+                    {% if cell_rows %}
+                      {% set cell_mean = ((cell_rows|sum(attribute='attainment')) / (cell_rows|length))|round(1) %}
+                      {% set cell_target = ((cell_rows|sum(attribute='target')) / (cell_rows|length))|round(1) %}
+                      {% set cell_met = cell_mean >= cell_target %}
+                      <td class="{{ 'met' if cell_met else 'missed' }}">
+                        <strong class="matrix-value">{{ cell_mean }}% attainment</strong>
+                        <small>Target {{ cell_target }}% · {{ 'Meets target' if cell_met else 'Below target' }}</small>
+                        <small>{{ cell_rows|length }} measure{{ '' if cell_rows|length == 1 else 's' }}</small>
+                      </td>
+                    {% else %}
+                      <td class="empty"><strong class="matrix-value">—</strong><small>No evidence</small></td>
+                    {% endif %}
+                  {% endfor %}
+                </tr>
+              {% else %}
+                <tr><td colspan="{{ (analysis.terms|length) + 1 }}">No matching course and term evidence.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="heatmap-key" aria-label="Course by term table key"><span class="met">Mean meets target</span><span class="missed">Mean below target</span><span>No evidence</span></p>
+      </details>
+    </section>
+
+    <section class="panel analysis-panel" aria-labelledby="outcome-analysis-heading">
+      <div class="panel-head"><div><p class="eyebrow">Student outcomes</p><h2 id="outcome-analysis-heading">Outcome attainment vs target</h2><p>Bars show the mean across included measures; the marker shows the mean of their configured targets.</p></div></div>
+      {{ summary_bars(analysis.outcomes, 'No outcome evidence is available in this selection.') }}
+      <details class="analysis-data"><summary>View outcome values</summary>{{ summary_table(analysis.outcomes, 'Outcome', 'Outcome-level statistics for the selected evidence.') }}</details>
+    </section>
+
+    <section class="panel analysis-panel" aria-labelledby="term-summary-heading">
+      <div class="panel-head"><div><p class="eyebrow">Term summary</p><h2 id="term-summary-heading">Overall attainment by term</h2><p>This view combines the selected courses and exposes gaps in longitudinal evidence.</p></div></div>
+      {{ summary_bars(analysis.terms, 'No term evidence is available in this selection.') }}
+    </section>
+  </div>
+
+  <section class="panel analysis-panel" aria-labelledby="indicator-term-heading">
+    <div class="panel-head"><div><p class="eyebrow">PI + Bloom trends</p><h2 id="indicator-term-heading">Performance-indicator and Bloom attainment by term</h2><p>Each performance indicator has its own panel. Colored symbols show Bloom-level term means, outlined points show overall PI means, fitted lines show descriptive trends, and dashed red lines show configured targets. No confidence bands are used.</p></div></div>
+    {{ chart_figure(charts.semester_indicator, 'tall') }}
+    <details class="analysis-data"><summary>View term × indicator values</summary>
+      <div class="heatmap-wrap">
+        <table class="heatmap analysis-table">
+          <caption>Mean attainment for each observed performance-indicator, Bloom-level, and academic-term intersection.</caption>
+          <thead><tr><th scope="col">Indicator / Bloom level</th>{% for term in analysis.terms %}<th scope="col">{{ term.label }}</th>{% endfor %}</tr></thead>
+          <tbody>
+            {% for item in analysis.indicator_bloom %}
+              {% set series_rows = analysis.rows|selectattr('outcome_id', 'equalto', item.outcome_id)|selectattr('indicator_id', 'equalto', item.indicator_id)|selectattr('bloom_level', 'equalto', item.level)|list %}
+              <tr>
+                <th scope="row">{{ item.label }}</th>
+                {% for term in analysis.terms %}
+                  {% set cell_rows = series_rows|selectattr('term_id', 'equalto', term.key)|list %}
+                  {% if cell_rows %}
+                    {% set cell_mean = ((cell_rows|sum(attribute='attainment')) / (cell_rows|length))|round(1) %}
+                    {% set cell_target = ((cell_rows|sum(attribute='target')) / (cell_rows|length))|round(1) %}
+                    <td class="{{ 'met' if cell_mean >= cell_target else 'missed' }}"><span>{{ cell_mean }}%</span><small>{{ cell_rows|length }} measure{{ '' if cell_rows|length == 1 else 's' }} · {{ 'met' if cell_mean >= cell_target else 'below' }} target {{ cell_target }}%</small></td>
+                  {% else %}
+                    <td class="empty"><span>—</span><small>No evidence</small></td>
+                  {% endif %}
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+
+  <section class="panel analysis-panel" aria-labelledby="indicator-analysis-heading">
+    <div class="panel-head"><div><p class="eyebrow">Performance indicators</p><h2 id="indicator-analysis-heading">Indicator attainment vs target</h2><p>Indicator descriptions and Bloom levels provide the detailed connection between course evidence and each student outcome.</p></div></div>
+    {{ summary_bars(analysis.indicators, 'No performance-indicator evidence is available in this selection.') }}
+    <details class="analysis-data"><summary>View performance-indicator values</summary>{{ summary_table(analysis.indicators, 'Performance indicator', 'Indicator-level statistics for the selected evidence.') }}</details>
+  </section>
+
+  <section class="panel analysis-panel" aria-labelledby="bloom-heading">
+    <div class="panel-head"><div><p class="eyebrow">Cognitive demand</p><h2 id="bloom-heading">Bloom-level attainment and nonparametric comparison</h2><p>The boxplot retains the original Bloom analysis while the table and test results expose the values used.</p></div></div>
+    <div class="analysis-grid">
+      <div>
+        {{ chart_figure(charts.bloom_boxplot, 'tall') }}
+        <details class="analysis-data" open><summary>View Bloom-level values</summary>
+          <div class="table-wrap">
+            <table class="analysis-table">
+              <caption>Descriptive statistics by Bloom level. Blank values appear as Unspecified and are excluded from the inferential comparison; nonstandard labels remain visible as distinct groups.</caption>
+              <thead><tr><th scope="col">Bloom level</th><th scope="col" class="number">Measures</th><th scope="col" class="number">Mean</th><th scope="col" class="number">Median</th><th scope="col" class="number">Std. dev.</th><th scope="col" class="number">Range</th></tr></thead>
+              <tbody>{% for item in analysis.bloom %}<tr><th scope="row">{{ item.level }}</th><td class="number">{{ item.count }}</td><td class="number">{{ item.mean|round(1) }}%</td><td class="number">{{ item.median|round(1) }}%</td><td class="number">{{ item.standard_deviation|round(2) if item.standard_deviation is not none else '—' }}</td><td class="number">{{ item.minimum|round(1) }}–{{ item.maximum|round(1) }}%</td></tr>{% else %}<tr><td colspan="6">No recognized Bloom-level evidence is available.</td></tr>{% endfor %}</tbody>
+            </table>
+          </div>
+        </details>
+      </div>
+      <div>
+        <div class="statistics-grid" aria-label="Bloom statistical results">
+          <article class="statistic-card">
+            <h3>Kruskal–Wallis test</h3>
+            {% if analysis.kruskal_wallis.h_statistic is number and analysis.kruskal_wallis.p_value is number %}
+              <p class="statistic-value">H = {{ '%.3f'|format(analysis.kruskal_wallis.h_statistic) }} · p = {{ '%.4f'|format(analysis.kruskal_wallis.p_value) }}</p>
+              <p>{{ analysis.kruskal_wallis.group_count }} Bloom groups (df = {{ analysis.kruskal_wallis.group_count - 1 }}). {{ 'Evidence of a distributional difference at α = .05.' if analysis.kruskal_wallis.significant else 'No distributional difference detected at α = .05.' }}</p>
+            {% else %}
+              <p class="statistic-value">Not available</p><p>{{ analysis.kruskal_wallis.reason or 'At least two usable Bloom groups are required.' }}</p>
+            {% endif %}
+          </article>
+          <article class="statistic-card">
+            <h3>Cliff’s delta</h3>
+            {% if analysis.cliffs_delta.delta is number %}
+              <p class="statistic-value">Δ = {{ '%+.3f'|format(analysis.cliffs_delta.delta) }}</p>
+              <p>{{ analysis.cliffs_delta.magnitude|title }} effect for Analyze (n={{ analysis.cliffs_delta.analyze_count }}) versus all other recognized levels (n={{ analysis.cliffs_delta.other_count }}).</p>
+            {% else %}
+              <p class="statistic-value">Not available</p><p>{{ analysis.cliffs_delta.reason or 'Analyze and comparison observations are both required.' }}</p>
+            {% endif %}
+          </article>
+        </div>
+        <div class="analysis-caveat"><strong>Interpret with context.</strong> Kruskal–Wallis tests whether the selected Bloom groups have the same distribution; it does not identify which groups differ or establish causation. Repeated measures across courses, indicators, or terms may not be independent. Cliff’s delta is retained for parity with the original analysis and compares Analyze with all other levels.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="analysis-grid">
+    <section class="panel analysis-panel" aria-labelledby="trend-heading">
+      <div class="panel-head"><div><p class="eyebrow">Longitudinal signal</p><h2 id="trend-heading">Linear attainment trend</h2><p>A descriptive least-squares trend across chronologically ordered term means.</p></div></div>
+      {% if analysis.trend.slope is number %}
+        {{ chart_figure(charts.trend_line, 'tall') }}
+        <div class="statistics-grid">
+          <article class="statistic-card"><h3>Estimated change</h3><p class="statistic-value">{{ '%+.3f'|format(analysis.trend.slope) }} points / term unit</p><p>{{ analysis.trend.direction|title }} trend across {{ analysis.trend.term_count }} terms.</p></article>
+          <article class="statistic-card"><h3>Model evidence</h3><p class="statistic-value">R² = {{ '%.3f'|format(analysis.trend.r_squared) }}</p><p>p = {{ '%.4f'|format(analysis.trend.p_value) }} · standard error {{ '%.3f'|format(analysis.trend.standard_error) }}</p></article>
+        </div>
+        <div class="table-wrap">
+          <table class="analysis-table">
+            <caption>Observed term means and fitted values used for the linear trend.</caption>
+            <thead><tr><th scope="col">Term</th><th scope="col" class="number">Measures</th><th scope="col" class="number">Observed mean</th><th scope="col" class="number">Fitted mean</th></tr></thead>
+            <tbody>{% for item in analysis.trend.terms %}<tr><th scope="row">{{ item.label }}</th><td class="number">{{ item.count }}</td><td class="number">{{ item.mean|round(1) }}%</td><td class="number">{{ item.fitted|round(1) }}%</td></tr>{% endfor %}</tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="chart-unavailable"><strong>Trend unavailable for this selection</strong><span>{{ analysis.trend.reason or 'At least two terms with usable evidence are required.' }}</span></div>
+      {% endif %}
+      <div class="analysis-caveat">The line summarizes association with time, not the effect of an intervention. Review assessment changes, populations, instruments, and missing terms before drawing a continuous-improvement conclusion.</div>
+    </section>
+
+    <section class="panel analysis-panel" aria-labelledby="heatmap-heading">
+      <div class="panel-head"><div><p class="eyebrow">Curriculum alignment</p><h2 id="heatmap-heading">Course × outcome heatmap</h2><p>Mean attainment for each observed course/outcome intersection; blank cells indicate no evidence.</p></div></div>
+      {{ chart_figure(charts.course_outcome_heatmap, 'tall') }}
+      <details class="analysis-data"><summary>View heatmap values</summary>
+        <div class="heatmap-wrap">
+          <table class="heatmap analysis-table">
+            <caption>Mean attainment by course and outcome. Each cell also reports the number of included assessment measures and their mean target.</caption>
+            <thead><tr><th scope="col">Course</th>{% for outcome in analysis.outcomes %}<th scope="col">{{ outcome.label.split(':', 1)[0] }}</th>{% endfor %}</tr></thead>
+            <tbody>
+              {% for course in analysis.courses %}
+                {% set course_rows = analysis.rows|selectattr('course_id', 'equalto', course.key)|list %}
+                <tr>
+                  <th scope="row">{{ course.label.split(' — ', 1)[0] }}</th>
+                  {% for outcome in analysis.outcomes %}
+                    {% set cell_rows = course_rows|selectattr('outcome_id', 'equalto', outcome.key)|list %}
+                    {% if cell_rows %}
+                      {% set cell_mean = ((cell_rows|sum(attribute='attainment')) / (cell_rows|length))|round(1) %}
+                      {% set cell_target = ((cell_rows|sum(attribute='target')) / (cell_rows|length))|round(1) %}
+                      <td class="{{ 'met' if cell_mean >= cell_target else 'missed' }}"><span>{{ cell_mean }}%</span><small>{{ cell_rows|length }} measure{{ '' if cell_rows|length == 1 else 's' }} · {{ 'met' if cell_mean >= cell_target else 'below' }} target {{ cell_target }}%</small></td>
+                    {% else %}
+                      <td class="empty"><span>—</span><small>No evidence</small></td>
+                    {% endif %}
+                  {% endfor %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="heatmap-key" aria-label="Heatmap key"><span class="met">Mean meets target</span><span class="missed">Mean below target</span><span>No evidence</span></p>
+      </details>
+    </section>
+  </div>
+
+  <section class="panel" aria-labelledby="record-analysis-heading">
+    <div class="panel-head"><div><p class="eyebrow">Record-level evidence</p><h2 id="record-analysis-heading">Analysis and narrative table</h2><p>Values shown here are the source evidence for the summaries and statistical analyses above.</p></div><span class="badge">{{ records|length }} records</span></div>
+    <div class="table-wrap">
+      <table class="analysis-record-table">
+        <caption>Selected assessment measures, attainment values, workflow state, and faculty interpretation.</caption>
+        <thead><tr><th scope="col">Campus</th><th scope="col">Term / course</th><th scope="col">Outcome / indicator</th><th scope="col">Measure</th><th scope="col">Attainment</th><th scope="col">Target</th><th scope="col">Status</th><th scope="col">Interpretation and action</th></tr></thead>
+        <tbody>
+          {% for row in records %}
+            <tr>
+              <td><span class="campus-badge {{ 'unassigned' if row.campus == 'Unassigned' }}">{{ 'Not recorded' if row.campus == 'Unassigned' else row.campus }}</span></td>
+              <td><div class="measure-context"><strong>{{ row.term_label }}</strong><span>{{ row.course_label }}</span></div></td>
+              <td><div class="measure-context"><strong>{{ row.outcome_label.split(':', 1)[0] }}</strong><span>{{ row.indicator_label }}</span></div></td>
+              <td><div class="measure-context"><strong>{{ row.assessment_tool }}</strong><span>{{ row.method|title }}{% if row.bloom_level %} · {{ row.bloom_level }}{% endif %}</span>{% if row.result_basis == 'percentages' %}<small>EPAN: E {{ row.expert_percent }}% · P {{ row.practitioner_percent }}% · A {{ row.apprentice_percent }}% · N {{ row.novice_percent }}%{% if row.legacy_import_id %} · Edinburg source row #{{ row.legacy_source_record_id }}{% endif %}</small>{% else %}<small>Sample: {{ row.sample_size }}</small>{% endif %}</div></td>
+              <td><strong class="attainment {{ 'met' if row.attainment >= row.target else 'missed' }}">{{ row.attainment|round(2) }}%</strong></td>
+              <td>{{ row.target|round(1) }}%</td>
+              <td><span class="status {{ row.status }}">{{ row.status }}</span></td>
+              <td>{{ row.observations or 'No observation recorded.' }}{% if row.action_notes %}<span class="block"><strong>Action:</strong> {{ row.action_notes }}</span>{% endif %}{% if row.admin_revision_count %}<span class="block admin-change-summary"><strong>Administrator changed:</strong> {{ row.admin_change_note }} · {{ row.admin_changed_by }}, {{ row.admin_changed_at }}</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% else %}
+  <section class="panel empty-state analysis-empty" aria-labelledby="empty-analysis-heading">
+    <div>
+      <p class="eyebrow">No matching evidence</p>
+      <h2 id="empty-analysis-heading">This selection has no {{ 'approved' if evidence_scope == 'approved' else '' }} assessment measures to analyze.</h2>
+      {% if evidence_scope == 'approved' %}
+        <p class="muted">Current source records and faculty work remain outside official results until approved. You can inspect them in a clearly labeled preview.</p>
+        <a class="button primary no-print" href="{{ preview_url }}">Preview all workflow states</a>
+      {% else %}
+        <p class="muted">Change the selected courses or loosen one of the term, outcome, indicator, or method filters.</p>
+        <a class="button secondary no-print" href="{{ url_for('platform.analytics') }}">Reset filters</a>
+      {% endif %}
+    </div>
+  </section>
+{% endif %}
+{% endblock %}

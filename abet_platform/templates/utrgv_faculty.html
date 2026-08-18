@@ -1,0 +1,160 @@
+{% extends 'base.html' %}
+{% block title %}Faculty roster · {{ config.PRODUCT_NAME }}{% endblock %}
+{% macro course_campus_picker(courses, campuses, selected_pairs, picker_id) -%}
+  <fieldset class="course-campus-access" data-course-campus-access>
+    <legend>Approved course and campus access</legend>
+    <p class="field-help" id="{{ picker_id }}-help">Select at least one campus for every course this faculty member may access. A course is not assigned when neither campus is selected.</p>
+    <div class="course-campus-permission-grid" aria-describedby="{{ picker_id }}-help">
+      {% for course in courses %}
+        <section class="course-campus-permission" aria-labelledby="{{ picker_id }}-course-{{ course.id }}">
+          <div class="course-campus-permission-heading">
+            <strong id="{{ picker_id }}-course-{{ course.id }}">{{ course.code }}</strong>
+            <small>{{ course.name }}</small>
+          </div>
+          <div class="course-campus-options" role="group" aria-label="Approved campuses for {{ course.code }}">
+            {% for campus in campuses %}
+              {% set pair_value = course.id|string ~ ':' ~ campus %}
+              <label>
+                <input type="checkbox" name="course_campus_pairs" value="{{ pair_value }}"{% if pair_value in selected_pairs or (course.id, campus) in selected_pairs %} checked{% endif %}>
+                <span>{{ campus }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </section>
+      {% endfor %}
+    </div>
+    <p class="course-campus-validation" data-course-campus-validation role="status" aria-live="polite"></p>
+  </fieldset>
+{%- endmacro %}
+
+{% macro course_campus_summary(courses, campuses, selected_pairs) -%}
+  <ul class="course-campus-summary">
+    {% for course in courses %}
+      {% set course_scope = namespace(assigned=false) %}
+      {% for campus in campuses %}
+        {% if (course.id, campus) in selected_pairs %}{% set course_scope.assigned = true %}{% endif %}
+      {% endfor %}
+      {% if course_scope.assigned %}
+        <li>
+          <strong>{{ course.code }}</strong>
+          <span>
+            {% set campus_scope = namespace(rendered=0) %}
+            {% for campus in campuses %}
+              {% if (course.id, campus) in selected_pairs %}{% if campus_scope.rendered %}, {% endif %}{{ campus }}{% set campus_scope.rendered = campus_scope.rendered + 1 %}{% endif %}
+            {% endfor %}
+          </span>
+        </li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+{%- endmacro %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">UTRGV access control</p>
+    <h1>Mechanical Engineering faculty roster</h1>
+    <p class="muted">Faculty accounts are invitation-only. The owner approves the exact UTRGV email and course–campus scope; an administrator may then activate the account with a temporary password.</p>
+  </div>
+  <a class="button secondary" href="{{ url_for('platform.users') }}">All users</a>
+</div>
+
+{% if g.membership.role == 'owner' %}
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <p class="eyebrow">Owner approval</p>
+      <h2>Add approved faculty</h2>
+      <p class="muted">Adding an invitation does not create an account. It allowlists one institutional email and its courses for later activation.</p>
+    </div>
+  </div>
+  <form method="post" action="{{ url_for('platform.utrgv_faculty_invite') }}" class="stack" data-course-campus-access-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-grid two">
+      <label>Full name<input name="display_name" required></label>
+      <label>Approved UTRGV email<input type="email" name="approved_email" pattern=".+@utrgv\.edu" placeholder="name@utrgv.edu" required></label>
+    </div>
+    {{ course_campus_picker(courses, campuses, request.form.getlist('course_campus_pairs'), 'new-faculty') }}
+    <div><button class="button primary" type="submit">Add approved invitation</button></div>
+  </form>
+</section>
+{% endif %}
+
+<section class="panel flush">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Faculty member</th><th>Approved identity</th><th>Approved course–campus access</th><th>Status</th><th>Account access and recovery</th></tr></thead>
+      <tbody>
+        {% for item in roster %}
+          <tr id="faculty-{{ item.id }}">
+            <td>
+              <strong>{{ item.display_name }}</strong>
+              <small class="block">Roster identity: {{ item.legacy_name }}</small>
+              {% if g.membership.role == 'owner' %}
+                <details class="account-recovery">
+                  <summary>Edit approved invitation</summary>
+                  <form method="post" action="{{ url_for('platform.utrgv_faculty_invitation_update', roster_id=item.id) }}" class="stack compact" data-course-campus-access-form>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <label>Full name<input name="display_name" value="{{ item.display_name }}" required></label>
+                    <label>Approved UTRGV email<input type="email" name="approved_email" pattern=".+@utrgv\.edu" value="{{ item.approved_email or '' }}" required></label>
+                    {{ course_campus_picker(courses, campuses, item.course_campus_pairs|default([]), 'faculty-' ~ item.id|string) }}
+                    <button class="button secondary small" type="submit">Save approved access</button>
+                  </form>
+                </details>
+              {% endif %}
+            </td>
+            <td>
+              {% if item.approved_email %}<strong>{{ item.approved_email }}</strong>{% else %}<span class="status returned">Email approval required</span>{% endif %}
+              {% if item.user_id %}
+                <small class="block">Sign-in: {{ item.username or item.email }}</small>
+                {% if item.email and item.approved_email and item.email|lower != item.approved_email|lower %}<small class="block">Account email mismatch: {{ item.email }} — sign-in is blocked until the owner saves the approved invitation.</small>{% endif %}
+              {% else %}<small class="block">No account created</small>{% endif %}
+            </td>
+            <td>
+              {% if item.course_campus_pairs|default([]) %}
+                {{ course_campus_summary(courses, campuses, item.course_campus_pairs) }}
+              {% else %}
+                <span class="muted">No course–campus access approved</span>
+              {% endif %}
+            </td>
+            <td>
+              <span class="status {{ 'approved' if item.status == 'active' else 'returned' if item.status == 'inactive' else 'draft' }}">{{ item.status }}</span>
+              {% if item.must_change_password %}<small class="block">Password change required at next sign-in</small>{% endif %}
+            </td>
+            <td>
+              {% if not item.user_id and item.status == 'pending' and item.approved_email and item.course_campus_pairs|default([]) %}
+                <form method="post" action="{{ url_for('platform.utrgv_faculty_activate', roster_id=item.id) }}" class="activation-form scoped-activation">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <div class="activation-approved-scope">
+                    <p class="muted">Account will use {{ item.approved_email }} with the fixed Faculty role and only the approved access below.</p>
+                    {{ course_campus_summary(courses, campuses, item.course_campus_pairs) }}
+                  </div>
+                  <label>Sign-in name<input name="username" value="{{ item.legacy_name }}" required></label>
+                  <label>Temporary password<input type="password" name="temporary_password" minlength="12" autocomplete="new-password" required></label>
+                  <button class="button secondary small" type="submit">Activate faculty account</button>
+                </form>
+              {% elif not item.user_id and item.status == 'pending' %}
+                <span class="muted">The owner must approve an email and at least one course–campus pair before activation.</span>
+              {% elif not item.is_active %}
+                <span class="muted">Account is inactive</span>
+              {% else %}
+                <details class="account-recovery">
+                  <summary>Set temporary password</summary>
+                  <form method="post" action="{{ url_for('platform.set_temporary_password', user_id=item.user_id) }}" class="activation-form recovery-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="next" value="{{ url_for('platform.utrgv_faculty') }}">
+                    <label>Temporary password<input type="password" name="temporary_password" minlength="12" autocomplete="new-password" required></label>
+                    <label>Confirm password<input type="password" name="confirm_temporary_password" minlength="12" autocomplete="new-password" required></label>
+                    <button class="button secondary small" type="submit">Set password</button>
+                  </form>
+                </details>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5">No approved faculty invitations are configured.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
