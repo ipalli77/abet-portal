@@ -2376,6 +2376,8 @@ def report():
         campus_summaries=report_analysis["campuses"],
         campus_comparison=report_analysis["campus_comparison"],
         campus_chart=report_charts.get("campus_comparison"),
+        campus_trends=report_analysis.get("campus_trends", []),
+        campus_trend_chart=report_charts.get("trend_line"),
         unresolved_campus_count=unresolved_campus_count,
         actions=actions,
         evidence=evidence,

@@ -23,6 +23,10 @@ BLOOM_ORDER = ("Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create
 _BLOOM_RANK = {level: index for index, level in enumerate(BLOOM_ORDER)}
 _COLORS = ("#003638", "#ee7f2f", "#00736f", "#7c4d8f", "#b94747", "#3f6f9f")
 CAMPUS_ORDER = ("Edinburg", "Brownsville")
+CAMPUS_STYLES = {
+    "Edinburg": {"color": "#003638", "marker": "o", "linestyle": "-"},
+    "Brownsville": {"color": "#ee7f2f", "marker": "D", "linestyle": "-."},
+}
 
 
 def _as_dict(row: Any) -> dict[str, Any]:
@@ -556,6 +560,170 @@ def _trend(rows: list[dict[str, Any]], terms: list[dict[str, Any]]) -> dict[str,
     }
 
 
+def _campus_scope(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Describe whether a pooled artifact combines the two named campuses."""
+    campuses = [
+        campus
+        for campus in CAMPUS_ORDER
+        if any(row["campus"] == campus for row in rows)
+    ]
+    if len(campuses) > 1:
+        mode = "combined"
+        label = "Combined Edinburg + Brownsville evidence"
+    elif len(campuses) == 1:
+        mode = "single"
+        label = f"{campuses[0]} evidence"
+    elif rows:
+        mode = "unassigned"
+        label = "Evidence without an assigned UTRGV campus"
+    else:
+        mode = "empty"
+        label = "No campus evidence"
+    return {
+        "mode": mode,
+        "campuses": campuses,
+        "label": label,
+        "unassigned_count": sum(row["campus"] == "Unassigned" for row in rows),
+    }
+
+
+def _contiguous_segments(
+    attainment_values: list[float | None], term_labels: list[str]
+) -> list[dict[str, Any]]:
+    """Return observed runs without bridging an unobserved academic term."""
+    segments: list[dict[str, Any]] = []
+    current: list[int] = []
+    for index, value in enumerate(attainment_values):
+        if value is None:
+            if current:
+                segments.append(
+                    {
+                        "term_indices": current,
+                        "term_labels": [term_labels[item] for item in current],
+                    }
+                )
+                current = []
+        else:
+            current.append(index)
+    if current:
+        segments.append(
+            {
+                "term_indices": current,
+                "term_labels": [term_labels[item] for item in current],
+            }
+        )
+    return segments
+
+
+def _longitudinal_campus_series(
+    rows: list[dict[str, Any]],
+    terms: list[dict[str, Any]],
+    *,
+    trend_block_reason: str | None = None,
+) -> list[dict[str, Any]]:
+    """Build aligned, gap-aware campus series for charting and accessible data."""
+    term_labels = [str(term["label"]) for term in terms]
+    series: list[dict[str, Any]] = []
+    present_campuses = [
+        campus
+        for campus in CAMPUS_ORDER
+        if any(row["campus"] == campus for row in rows)
+    ]
+    for campus in present_campuses:
+        campus_rows = [row for row in rows if row["campus"] == campus]
+        by_term: dict[Any, list[dict[str, Any]]] = defaultdict(list)
+        for row in campus_rows:
+            by_term[row.get("term_id")].append(row)
+        attainment_values: list[float | None] = []
+        target_values: list[float | None] = []
+        counts: list[int] = []
+        for term in terms:
+            evidence = by_term[term["key"]]
+            counts.append(len(evidence))
+            if not evidence:
+                attainment_values.append(None)
+                target_values.append(None)
+                continue
+            attainment_values.append(
+                _mean([float(item["attainment"]) for item in evidence])
+            )
+            target_values.append(_mean([float(item["target"]) for item in evidence]))
+        observed_indices = [
+            index for index, value in enumerate(attainment_values) if value is not None
+        ]
+        observed_values = [
+            float(attainment_values[index]) for index in observed_indices
+        ]
+        trend = {
+            "status": "unavailable",
+            "slope": None,
+            "intercept": None,
+            "r_squared": None,
+            "p_value": None,
+            "direction": None,
+            "reason": None,
+        }
+        if trend_block_reason and observed_indices:
+            trend["reason"] = trend_block_reason
+        elif len(observed_indices) >= 3:
+            result = stats.linregress(
+                np.asarray(observed_indices, dtype=float),
+                np.asarray(observed_values, dtype=float),
+            )
+            if math.isfinite(float(result.slope)):
+                trend.update(
+                    {
+                        "status": "available",
+                        "slope": float(result.slope),
+                        "intercept": float(result.intercept),
+                        "r_squared": float(result.rvalue**2),
+                        "p_value": float(result.pvalue),
+                        "direction": (
+                            "stable"
+                            if abs(float(result.slope)) < 1e-12
+                            else "increasing"
+                            if float(result.slope) > 0
+                            else "decreasing"
+                        ),
+                        "reason": None,
+                    }
+                )
+            else:
+                trend["reason"] = "The observed term means did not produce a finite trend."
+        elif len(observed_indices) == 2:
+            if observed_indices[1] - observed_indices[0] == 1:
+                trend["reason"] = (
+                    "Two-term change is shown; three terms are required for a fitted trend."
+                )
+            else:
+                trend["reason"] = (
+                    "Two nonconsecutive terms are shown without a connecting line; "
+                    "three terms are required for a fitted trend."
+                )
+        elif len(observed_indices) == 1:
+            trend["reason"] = "Only one populated term; a fitted trend is not available."
+        else:
+            trend["reason"] = f"No usable {campus} evidence is available."
+        series.append(
+            {
+                "campus": campus,
+                "term_labels": term_labels,
+                "attainment_values": attainment_values,
+                "target_values": target_values,
+                "counts": counts,
+                "segments": _contiguous_segments(attainment_values, term_labels),
+                "observed_term_count": len(observed_indices),
+                "missing_term_count": len(terms) - len(observed_indices),
+                "count": len(campus_rows),
+                "measure_count": len(campus_rows),
+                "status": "available" if observed_indices else "unavailable",
+                "style": dict(CAMPUS_STYLES[campus]),
+                "trend": trend,
+            }
+        )
+    return series
+
+
 def analyze_rows(
     rows: Iterable[Any],
     selected_courses: Iterable[Any] | None = None,
@@ -631,6 +799,8 @@ def analyze_rows(
     selected = sorted(
         {row.get("course_id") for row in data if row.get("course_id") is not None}
     )
+    trend = _trend(data, terms)
+    campus_trends = _longitudinal_campus_series(data, terms)
     return {
         "rows": data,
         "row_count": len(data),
@@ -645,13 +815,25 @@ def analyze_rows(
         "campus_comparison": _campus_comparison(data, campuses, campus_group),
         "kruskal_wallis": _kruskal_wallis(data),
         "cliffs_delta": _cliffs_delta(data),
-        "trend": _trend(data, terms),
+        # The pooled trend remains for backwards-compatible tables and API
+        # consumers. Longitudinal charts use the campus-separated series.
+        "trend": trend,
+        "campus_trends": campus_trends,
         "methodology": {
             "unit": "assessment measure",
             "weighting": "unweighted",
             "target_basis": "each measure's configured target",
             "campus_comparison": (
                 "unweighted assessment measures using each measure's configured target"
+            ),
+            "campus_scope": _campus_scope(data),
+            "longitudinal_analysis": (
+                "Edinburg and Brownsville are modeled as separate observed and "
+                "fitted series on the chronologically ordered observed-term axis; "
+                "campus-specific missing terms are never imputed or bridged."
+            ),
+            "longitudinal_campus_basis": (
+                "separate campus series using each measure's configured target"
             ),
         },
     }
@@ -725,11 +907,26 @@ def _course_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
     axis.legend(loc="lower right", frameon=False)
     for index, value in enumerate(values):
         axis.text(min(value + 1, axis.get_xlim()[1] - 7), index, f"{value:.1f}%", va="center", fontsize=8)
+    campus_scope = _campus_scope(analysis["rows"])
+    insights = []
+    if campus_scope["mode"] == "combined":
+        insights.append(
+            "This pooled non-time summary combines Edinburg and Brownsville evidence."
+        )
     alt = "; ".join(
         f"{item['label'].split(' — ', 1)[0]} {item['mean']:.1f}% from {item['count']} measures"
         for item in summaries
     )
-    return _chart(figure, title=title, alt_text=alt, pyplot=pyplot)
+    if insights:
+        alt = f"{campus_scope['label']}. {alt}"
+    return _chart(
+        figure,
+        title=title,
+        alt_text=alt,
+        pyplot=pyplot,
+        insights=insights,
+        metadata={"campus_scope": campus_scope},
+    )
 
 
 def _format_cell_number(value: float) -> str:
@@ -881,7 +1078,9 @@ def _target_gap_heatmap(
     )
 
 
-def _semester_course_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
+def _semester_course_heatmap_chart(
+    analysis: dict[str, Any], pyplot
+) -> dict[str, Any]:
     title = "Course performance against target, by term"
     rows = analysis["rows"]
     terms = analysis["terms"]
@@ -935,6 +1134,228 @@ def _semester_course_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         gaps=gaps,
         counts=counts,
         insights=insights,
+    )
+
+
+def _plot_longitudinal_campus_series(
+    axis,
+    campus_series: list[dict[str, Any]],
+) -> None:
+    """Draw gap-aware observed, target, and fitted series on one axis."""
+    for series in campus_series:
+        campus = series["campus"]
+        style = CAMPUS_STYLES[campus]
+        values = series["attainment_values"]
+        targets = series["target_values"]
+        observed_indices = [
+            index for index, value in enumerate(values) if value is not None
+        ]
+        if not observed_indices:
+            continue
+        axis.scatter(
+            observed_indices,
+            [float(values[index]) for index in observed_indices],
+            s=48,
+            marker=style["marker"],
+            color=style["color"],
+            edgecolors="white",
+            linewidths=0.65,
+            zorder=4,
+            label=f"{campus} observed",
+        )
+        target_indices = [
+            index for index, value in enumerate(targets) if value is not None
+        ]
+        axis.scatter(
+            target_indices,
+            [float(targets[index]) for index in target_indices],
+            s=72,
+            marker="_",
+            color=style["color"],
+            linewidths=1.5,
+            alpha=0.8,
+            zorder=3,
+            label=f"{campus} configured target",
+        )
+        observed_label_used = False
+        target_label_used = False
+        trend = series["trend"]
+        for segment in series["segments"]:
+            indices = segment["term_indices"]
+            if len(indices) < 2:
+                continue
+            axis.plot(
+                indices,
+                [float(values[index]) for index in indices],
+                color=style["color"],
+                linestyle=":",
+                linewidth=1.05,
+                alpha=0.5,
+                zorder=2,
+                label=(
+                    f"{campus} observed segment"
+                    if not observed_label_used
+                    else "_nolegend_"
+                ),
+            )
+            observed_label_used = True
+            axis.plot(
+                indices,
+                [float(targets[index]) for index in indices],
+                color=style["color"],
+                linestyle="--",
+                linewidth=1.0,
+                alpha=0.55,
+                zorder=1,
+                label=(
+                    f"{campus} target path"
+                    if not target_label_used
+                    else "_nolegend_"
+                ),
+            )
+            target_label_used = True
+        if trend["status"] == "available":
+            # A fitted regression is a model over the observed range, not a
+            # path through observations. It remains visible when every point
+            # is isolated, while the faint observed paths above stay segmented.
+            fitted_x = np.linspace(
+                min(observed_indices), max(observed_indices), 80
+            )
+            axis.plot(
+                fitted_x,
+                trend["slope"] * fitted_x + trend["intercept"],
+                color=style["color"],
+                linestyle=style["linestyle"],
+                linewidth=2.15,
+                zorder=3,
+                label=f"{campus} fitted trend",
+            )
+
+
+def _semester_course_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
+    """Render campus-separated course trends, preserving the generic heatmap."""
+    title = "Course attainment trends by campus and term"
+    rows = analysis["rows"]
+    terms = analysis["terms"]
+    courses = analysis["courses"]
+    if not rows or not terms or not courses:
+        return _unavailable(
+            title, "No term-and-course evidence is available in this selection."
+        )
+    if not analysis["campus_trends"]:
+        # Generic-edition rows have no UTRGV campus. Keep their established,
+        # target-gap matrix and its public chart contract unchanged.
+        return _semester_course_heatmap_chart(analysis, pyplot)
+
+    column_count = min(2, len(courses))
+    row_count = math.ceil(len(courses) / column_count)
+    figure, axes = pyplot.subplots(
+        row_count,
+        column_count,
+        figsize=(max(8.4, 5.0 * column_count), max(4.2, 3.45 * row_count)),
+        sharex=True,
+        sharey=True,
+        squeeze=False,
+    )
+    flat_axes = list(axes.flat)
+    for unused in flat_axes[len(courses) :]:
+        figure.delaxes(unused)
+    flat_axes = flat_axes[: len(courses)]
+    term_labels = [str(term["label"]) for term in terms]
+    panel_metadata: list[dict[str, Any]] = []
+    observed_cells = 0
+    available_fits = 0
+    for axis, course in zip(flat_axes, courses):
+        course_rows = [row for row in rows if row.get("course_id") == course["key"]]
+        campus_series = _longitudinal_campus_series(course_rows, terms)
+        _plot_longitudinal_campus_series(axis, campus_series)
+        observed_cells += sum(item["observed_term_count"] for item in campus_series)
+        available_fits += sum(
+            item["trend"]["status"] == "available" for item in campus_series
+        )
+        course_code = str(course["label"]).split(" — ", 1)[0]
+        axis.set_title(course_code, fontsize=10.5, weight="bold")
+        axis.set_xticks(
+            np.arange(len(terms), dtype=float),
+            term_labels,
+            rotation=35,
+            ha="right",
+            fontsize=7.5,
+        )
+        axis.grid(axis="y", alpha=0.18)
+        for spine in ("top", "right"):
+            axis.spines[spine].set_visible(False)
+        panel_metadata.append(
+            {
+                "course_id": course["key"],
+                "course_code": course_code,
+                "course_label": course["label"],
+                "campus_series": campus_series,
+            }
+        )
+    scale_values = [float(row["attainment"]) for row in rows] + [
+        float(row["target"]) for row in rows
+    ]
+    upper = min(100.0, 5.0 * math.ceil((max(scale_values) + 5.0) / 5.0))
+    lower = max(0.0, 5.0 * math.floor((min(scale_values) - 5.0) / 5.0))
+    if upper - lower < 30:
+        lower = max(0.0, upper - 30.0)
+    for index, axis in enumerate(flat_axes):
+        axis.set_ylim(lower, upper)
+        if index % column_count == 0:
+            axis.set_ylabel("Attainment (%)", fontsize=9)
+    handles: dict[str, Any] = {}
+    for axis in flat_axes:
+        axis_handles, axis_labels = axis.get_legend_handles_labels()
+        for handle, label in zip(axis_handles, axis_labels, strict=True):
+            if "segment" not in label and "target path" not in label:
+                handles.setdefault(label, handle)
+    if handles:
+        figure.legend(
+            list(handles.values()),
+            list(handles),
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.005),
+            ncol=min(3, len(handles)),
+            frameon=False,
+            fontsize=8,
+        )
+    possible_cells = len(courses) * len(terms) * len(analysis["campus_trends"])
+    missing_cells = possible_cells - observed_cells
+    insights = [
+        f"Campus-separated course evidence covers {observed_cells} of {possible_cells} "
+        f"possible course-campus-term cells; {missing_cells} have no evidence.",
+        f"{available_fits} campus-course series have fitted trends based on at least three observed terms.",
+        "Each campus uses its own configured target on the chronologically ordered "
+        "observed-term axis; campus-specific missing terms are left blank and are not bridged.",
+    ]
+    campuses = [item["campus"] for item in analysis["campus_trends"]]
+    alt = (
+        f"Course-faceted longitudinal chart with {len(courses)} panels and separate "
+        f"{', '.join(campuses)} observed, configured-target, and fitted series. "
+        + " ".join(insights)
+    )
+    return _chart(
+        figure,
+        title=title,
+        alt_text=alt,
+        pyplot=pyplot,
+        chart_type="faceted_course_trend",
+        insights=insights,
+        metadata={
+            "facet_by": "course",
+            "panel_count": len(courses),
+            "panels": panel_metadata,
+            "term_labels": term_labels,
+            "campus_series": analysis["campus_trends"],
+            "campus_styles": {
+                campus: dict(CAMPUS_STYLES[campus]) for campus in campuses
+            },
+            "campus_scope": _campus_scope(rows),
+            "target_mode": "configured_by_campus_and_term",
+            "missing_terms_connected": False,
+        },
+        layout_rect=(0.0, 0.07, 1.0, 0.98),
     )
 
 
@@ -1103,11 +1524,26 @@ def _bloom_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
     axis.set_title(title, loc="left", weight="bold")
     axis.grid(axis="y", alpha=0.2)
     axis.legend(loc="lower left", frameon=False)
+    campus_scope = _campus_scope(analysis["rows"])
+    insights = []
+    if campus_scope["mode"] == "combined":
+        insights.append(
+            "This pooled non-time Bloom distribution combines Edinburg and Brownsville evidence."
+        )
     alt = "; ".join(
         f"{level}: {len(groups[level])} measures, median {median(groups[level]):.1f}%"
         for level in levels
     )
-    return _chart(figure, title=title, alt_text=alt, pyplot=pyplot)
+    if insights:
+        alt = f"{campus_scope['label']}. {alt}"
+    return _chart(
+        figure,
+        title=title,
+        alt_text=alt,
+        pyplot=pyplot,
+        insights=insights,
+        metadata={"campus_scope": campus_scope},
+    )
 
 
 def _heatmap_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
@@ -1154,11 +1590,29 @@ def _heatmap_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
     axis.set_title(title, loc="left", weight="bold")
     figure.colorbar(image, ax=axis, label="Attainment (%)", shrink=0.82)
     populated = int(np.count_nonzero(~np.isnan(matrix)))
-    alt = f"Matrix with {len(courses)} courses, {len(outcomes)} outcomes, and {populated} populated course-outcome cells."
-    return _chart(figure, title=title, alt_text=alt, pyplot=pyplot)
+    campus_scope = _campus_scope(analysis["rows"])
+    insights = []
+    if campus_scope["mode"] == "combined":
+        insights.append(
+            "This pooled non-time course-outcome matrix combines Edinburg and Brownsville evidence."
+        )
+    alt = (
+        f"Matrix with {len(courses)} courses, {len(outcomes)} outcomes, and "
+        f"{populated} populated course-outcome cells."
+    )
+    if insights:
+        alt = f"{campus_scope['label']}. {alt}"
+    return _chart(
+        figure,
+        title=title,
+        alt_text=alt,
+        pyplot=pyplot,
+        insights=insights,
+        metadata={"campus_scope": campus_scope},
+    )
 
 
-def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
+def _indicator_chart_overall(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
     title = "Performance indicator and Bloom attainment by term"
     rows = analysis["rows"]
     terms = analysis["terms"]
@@ -1519,7 +1973,314 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
     )
 
 
-def _trend_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
+def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
+    """Render PI facets with separate campus series when campus is known."""
+    if not analysis["campus_trends"]:
+        return _indicator_chart_overall(analysis, pyplot)
+    title = "Performance indicator and Bloom attainment by term"
+    rows = analysis["rows"]
+    terms = analysis["terms"]
+    if not rows or not terms:
+        return _unavailable(
+            title, "No performance-indicator evidence is available in this selection."
+        )
+
+    def natural_key(value: Any) -> tuple[tuple[int, Any], ...]:
+        return tuple(
+            (1, int(part)) if part.isdigit() else (0, part.casefold())
+            for part in re.split(r"(\d+)", str(value or ""))
+            if part
+        )
+
+    def short_term(label: str) -> str:
+        parts = label.split()
+        if len(parts) >= 2 and parts[-1].isdigit():
+            season = {
+                "fall": "F",
+                "spring": "Sp",
+                "summer": "Su",
+                "winter": "W",
+            }.get(parts[0].casefold(), parts[0][:2])
+            return f"{season}{parts[-1][-2:]}"
+        return label
+
+    panel_rows: dict[tuple[Any, Any], list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        panel_rows[(row.get("outcome_id"), row.get("indicator_id"))].append(row)
+
+    def panel_sort_key(item: tuple[tuple[Any, Any], list[dict[str, Any]]]):
+        first = item[1][0]
+        return (
+            _number(first.get("outcome_order")) or 0,
+            natural_key(first.get("outcome_code") or ""),
+            natural_key(first.get("indicator_code") or first.get("indicator_label")),
+        )
+
+    panels = sorted(panel_rows.items(), key=panel_sort_key)
+    column_count = min(3, len(panels))
+    row_count = math.ceil(len(panels) / column_count)
+    figure, axes = pyplot.subplots(
+        row_count,
+        column_count,
+        figsize=(
+            max(7.8, 4.15 * column_count),
+            max(5.8, 3.35 * row_count + 1.25),
+        ),
+        sharex=True,
+        sharey=True,
+        squeeze=False,
+    )
+    flat_axes = list(axes.flat)
+    for unused in flat_axes[len(panels) :]:
+        figure.delaxes(unused)
+    flat_axes = flat_axes[: len(panels)]
+    term_labels = [str(term["label"]) for term in terms]
+    term_index = {term["key"]: index for index, term in enumerate(terms)}
+    multiple_outcomes = len({key[0] for key, _items in panels}) > 1
+    bloom_levels = sorted(
+        {str(row["bloom_level"]) for row in rows},
+        key=lambda level: (_BLOOM_RANK.get(level, len(BLOOM_ORDER)), level),
+    )
+    bloom_markers = {
+        level: ("o", "s", "^", "P", "X", "v", "<", ">")[
+            index % 8
+        ]
+        for index, level in enumerate(bloom_levels)
+    }
+    panel_metadata: list[dict[str, Any]] = []
+    observed_cells = 0
+    latest_results: list[tuple[str, str, float, float]] = []
+    available_slopes: list[tuple[str, str, float]] = []
+
+    for axis, (panel_key, items) in zip(flat_axes, panels):
+        outcome_id, indicator_id = panel_key
+        first = items[0]
+        outcome_code = str(first.get("outcome_code") or "Outcome")
+        indicator_code = _display_indicator_code(
+            first.get("indicator_code") or first.get("indicator_label")
+        )
+        panel_label = (
+            f"{outcome_code} · {indicator_code}"
+            if multiple_outcomes
+            else indicator_code
+        )
+        block_reason = (
+            "Unmapped source rows may combine distinct indicators."
+            if indicator_code == "Unmapped source PI"
+            else None
+        )
+        campus_series = _longitudinal_campus_series(
+            items, terms, trend_block_reason=block_reason
+        )
+        _plot_longitudinal_campus_series(axis, campus_series)
+
+        bloom_point_count = 0
+        for campus in [item["campus"] for item in campus_series]:
+            style = CAMPUS_STYLES[campus]
+            for level in bloom_levels:
+                x_values: list[float] = []
+                y_values: list[float] = []
+                for term in terms:
+                    evidence = [
+                        item
+                        for item in items
+                        if item["campus"] == campus
+                        and item.get("term_id") == term["key"]
+                        and str(item["bloom_level"]) == level
+                    ]
+                    if evidence:
+                        x_values.append(float(term_index[term["key"]]))
+                        y_values.append(
+                            _mean([float(item["attainment"]) for item in evidence])
+                        )
+                if x_values:
+                    axis.scatter(
+                        x_values,
+                        y_values,
+                        s=21,
+                        marker=bloom_markers[level],
+                        facecolors="none",
+                        edgecolors=style["color"],
+                        linewidths=0.85,
+                        alpha=0.82,
+                        zorder=5,
+                    )
+                    bloom_point_count += len(x_values)
+
+        for series in campus_series:
+            observed_cells += series["observed_term_count"]
+            observed = [
+                (index, value)
+                for index, value in enumerate(series["attainment_values"])
+                if value is not None
+            ]
+            targets = series["target_values"]
+            if observed:
+                latest_index, latest_value = observed[-1]
+                latest_target = targets[latest_index]
+                if latest_target is not None:
+                    latest_results.append(
+                        (
+                            panel_label,
+                            series["campus"],
+                            float(latest_value),
+                            float(latest_target),
+                        )
+                    )
+            if series["trend"]["status"] == "available":
+                available_slopes.append(
+                    (panel_label, series["campus"], series["trend"]["slope"])
+                )
+
+        axis.set_title(panel_label, fontsize=10.5, weight="bold")
+        axis.set_xticks(
+            np.arange(len(terms), dtype=float),
+            [short_term(label) for label in term_labels],
+            rotation=38,
+            ha="right",
+            fontsize=7.5,
+        )
+        axis.grid(axis="y", alpha=0.18)
+        for spine in ("top", "right"):
+            axis.spines[spine].set_visible(False)
+        panel_metadata.append(
+            {
+                "outcome_code": outcome_code,
+                "indicator_code": indicator_code,
+                "point_count": bloom_point_count,
+                "measure_count": len(items),
+                "term_labels": term_labels,
+                "campus_series": campus_series,
+                "bloom_levels": bloom_levels,
+                "bloom_markers": bloom_markers,
+                "target_mode": "configured_by_campus_and_term",
+            }
+        )
+
+    scale_values = [float(row["attainment"]) for row in rows] + [
+        float(row["target"]) for row in rows
+    ]
+    lower = max(0.0, 5.0 * math.floor((min(scale_values) - 5.0) / 5.0))
+    upper = min(100.0, 5.0 * math.ceil((max(scale_values) + 5.0) / 5.0))
+    if upper - lower < 30.0:
+        lower = max(0.0, upper - 30.0)
+    for index, axis in enumerate(flat_axes):
+        axis.set_ylim(lower, upper)
+        if index % column_count == 0:
+            axis.set_ylabel("Attainment (%)", fontsize=9)
+    handles: dict[str, Any] = {}
+    for axis in flat_axes:
+        axis_handles, axis_labels = axis.get_legend_handles_labels()
+        for handle, label in zip(axis_handles, axis_labels, strict=True):
+            if "segment" not in label and "target path" not in label:
+                handles.setdefault(label, handle)
+    if handles:
+        figure.legend(
+            list(handles.values()),
+            list(handles),
+            title="Campus and series type",
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.11),
+            ncol=min(6, len(handles)),
+            frameon=False,
+            fontsize=8,
+            title_fontsize=8,
+        )
+    if bloom_levels:
+        from matplotlib.lines import Line2D
+
+        bloom_handles = [
+            Line2D(
+                [],
+                [],
+                linestyle="None",
+                marker=bloom_markers[level],
+                markerfacecolor="none",
+                markeredgecolor="#40515e",
+                markersize=5.5,
+                label=level,
+            )
+            for level in bloom_levels
+        ]
+        figure.legend(
+            bloom_handles,
+            bloom_levels,
+            title="Bloom level",
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.008),
+            ncol=min(7, len(bloom_levels)),
+            frameon=False,
+            fontsize=8,
+            title_fontsize=8,
+        )
+    figure.suptitle(
+        "PI-wise campus attainment trends",
+        x=0.5,
+        y=0.995,
+        fontsize=14,
+        weight="bold",
+    )
+    possible_cells = len(panels) * len(terms) * len(analysis["campus_trends"])
+    missing_cells = possible_cells - observed_cells
+    insights = [
+        f"{len(panels)} performance-indicator panel{'s' if len(panels) != 1 else ''} "
+        f"keep campus term means separate across {len(terms)} terms.",
+        f"Evidence covers {observed_cells} of {possible_cells} possible "
+        f"indicator-campus-term cells; {missing_cells} have no evidence.",
+        "Bloom levels use distinct marker shapes; marker and fitted-line color identifies campus.",
+        "Each campus uses its own configured target on the chronologically ordered "
+        "observed-term axis, and campus-specific missing terms are not bridged.",
+    ]
+    if latest_results:
+        latest_met = sum(value >= target for _, _, value, target in latest_results)
+        insights.append(
+            f"For each indicator-campus series's latest observed term, {latest_met} "
+            f"of {len(latest_results)} means met the configured target."
+        )
+    if available_slopes:
+        label, campus, slope = min(available_slopes, key=lambda item: item[2])
+        insights.append(
+            f"The most downward fitted campus pattern is {label} · {campus} at "
+            f"{slope:+.1f} percentage points per chronological term position."
+        )
+    if any(row.get("status") != "approved" for row in rows):
+        insights.insert(0, "Preview includes records that are not approved for official reporting.")
+    campuses = [item["campus"] for item in analysis["campus_trends"]]
+    metadata = {
+        "facet_by": "performance_indicator",
+        "panel_count": len(panels),
+        "panels": panel_metadata,
+        "term_labels": term_labels,
+        "campus_series": analysis["campus_trends"],
+        "campus_styles": {
+            campus: dict(CAMPUS_STYLES[campus]) for campus in campuses
+        },
+        "campus_scope": _campus_scope(rows),
+        "legend_title": "Campus and series type",
+        "bloom_legend_title": "Bloom level",
+        "bloom_levels": bloom_levels,
+        "bloom_markers": bloom_markers,
+        "target_mode": "configured_by_campus_and_term",
+        "missing_terms_connected": False,
+    }
+    alt = (
+        f"Faceted performance-indicator chart with {len(panels)} panels and separate "
+        f"{', '.join(campuses)} observed, configured-target, and fitted trend series. "
+        + " ".join(insights)
+    )
+    return _chart(
+        figure,
+        title=title,
+        alt_text=alt,
+        pyplot=pyplot,
+        chart_type="faceted_pi_trend",
+        insights=insights,
+        metadata=metadata,
+        layout_rect=(0.0, 0.235, 1.0, 0.955),
+    )
+
+
+def _trend_chart_overall(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
     title = "Chronological attainment trend"
     trend = analysis["trend"]
     if trend["status"] != "available":
@@ -1555,6 +2316,101 @@ def _trend_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         + "; ".join(f"{item['label']} {item['mean']:.1f}%" for item in terms)
     )
     return _chart(figure, title=title, alt_text=alt, pyplot=pyplot)
+
+
+def _trend_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
+    """Render separate campus trends, retaining generic aggregate behavior."""
+    if not analysis["campus_trends"]:
+        return _trend_chart_overall(analysis, pyplot)
+    title = "Chronological attainment trends by campus"
+    terms = analysis["terms"]
+    campus_series = analysis["campus_trends"]
+    if not terms or not any(item["observed_term_count"] for item in campus_series):
+        return _unavailable(
+            title, "No Edinburg or Brownsville term evidence is available."
+        )
+    figure, axis = pyplot.subplots(figsize=(9.0, 5.15))
+    _plot_longitudinal_campus_series(axis, campus_series)
+    term_labels = [str(term["label"]) for term in terms]
+    x = np.arange(len(terms), dtype=float)
+    axis.set_xticks(x, term_labels, rotation=35, ha="right")
+    values = [
+        float(value)
+        for series in campus_series
+        for values in (series["attainment_values"], series["target_values"])
+        for value in values
+        if value is not None
+    ]
+    lower = max(0.0, 5.0 * math.floor((min(values) - 5.0) / 5.0))
+    upper = min(100.0, 5.0 * math.ceil((max(values) + 5.0) / 5.0))
+    if upper - lower < 30.0:
+        lower = max(0.0, upper - 30.0)
+    axis.set_ylim(lower, upper)
+    axis.set_ylabel("Attainment (%)")
+    axis.set_title(title, loc="left", weight="bold")
+    axis.grid(axis="y", alpha=0.2)
+    for spine in ("top", "right"):
+        axis.spines[spine].set_visible(False)
+    handles: dict[str, Any] = {}
+    axis_handles, axis_labels = axis.get_legend_handles_labels()
+    for handle, label in zip(axis_handles, axis_labels, strict=True):
+        if "segment" not in label and "target path" not in label:
+            handles.setdefault(label, handle)
+    if handles:
+        axis.legend(
+            list(handles.values()),
+            list(handles),
+            frameon=False,
+            ncol=2 if len(handles) > 3 else 1,
+            fontsize=8,
+        )
+    insights = []
+    for series in campus_series:
+        trend = series["trend"]
+        if trend["status"] == "available":
+            insights.append(
+                f"{series['campus']} has a {trend['direction']} fitted trend of "
+                f"{trend['slope']:+.2f} percentage points per chronological term "
+                f"position across {series['observed_term_count']} observed terms."
+            )
+        else:
+            insights.append(f"{series['campus']}: {trend['reason']}")
+    missing = sum(item["missing_term_count"] for item in campus_series)
+    possible = len(terms) * len(campus_series)
+    observed = sum(item["observed_term_count"] for item in campus_series)
+    insights.append(
+        f"Coverage is {observed} of {possible} possible campus-term cells; "
+        f"{missing} have no evidence and are not connected as observed paths."
+    )
+    insights.append(
+        "Target markers and paths use each campus's configured target on the "
+        "chronologically ordered observed-term axis."
+    )
+    campuses = [item["campus"] for item in campus_series]
+    alt = (
+        f"Campus-specific longitudinal chart with separate {', '.join(campuses)} "
+        "observed markers, configured targets, and fitted trend lines. "
+        + " ".join(insights)
+    )
+    return _chart(
+        figure,
+        title=title,
+        alt_text=alt,
+        pyplot=pyplot,
+        chart_type="campus_trend",
+        insights=insights,
+        metadata={
+            "series_mode": "campus",
+            "term_labels": term_labels,
+            "campus_series": campus_series,
+            "campus_styles": {
+                campus: dict(CAMPUS_STYLES[campus]) for campus in campuses
+            },
+            "campus_scope": _campus_scope(analysis["rows"]),
+            "target_mode": "configured_by_campus_and_term",
+            "missing_terms_connected": False,
+        },
+    )
 
 
 def generate_charts(

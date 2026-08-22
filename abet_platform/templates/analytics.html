@@ -215,34 +215,39 @@
 
   <div class="analysis-grid">
     <section class="panel analysis-panel" aria-labelledby="course-analysis-heading">
-      <div class="panel-head"><div><p class="eyebrow">Course comparison</p><h2 id="course-analysis-heading">Attainment by course</h2><p>Mean measure attainment with each course’s mean target.</p></div></div>
+      <div class="panel-head"><div><p class="eyebrow">Course comparison</p><h2 id="course-analysis-heading">Attainment by course</h2><p>{% if config.EDITION == 'utrgv_mece' %}<strong>{{ analysis.methodology.campus_scope.label }}.</strong> {% endif %}Mean measure attainment with each course’s mean target.</p></div></div>
       {{ chart_figure(charts.course_attainment, 'tall') }}
       <details class="analysis-data"><summary>View course values</summary>{{ summary_table(analysis.courses, 'Course', 'Course-level statistics for the selected evidence.') }}</details>
     </section>
 
     <section class="panel analysis-panel" aria-labelledby="term-analysis-heading">
-      <div class="panel-head"><div><p class="eyebrow">Longitudinal comparison</p><h2 id="term-analysis-heading">Course attainment by term</h2><p>Selected courses are compared chronologically; missing combinations are not converted to zero.</p></div></div>
+      <div class="panel-head"><div><p class="eyebrow">Longitudinal comparison</p><h2 id="term-analysis-heading">Course attainment by term</h2><p>{% if config.EDITION == 'utrgv_mece' %}Each course panel places Edinburg and Brownsville on the same time axis. Observed gaps remain blank, and each campus receives its own descriptive trend only when enough evidence exists.{% else %}Selected courses are compared chronologically; missing combinations are not converted to zero.{% endif %}</p></div></div>
       {{ chart_figure(charts.semester_course, 'tall') }}
       <details class="analysis-data"><summary>View course × term values</summary>
         <div class="heatmap-wrap term-matrix-wrap" tabindex="0" role="region" aria-label="Scrollable course by term attainment table">
           <table class="analysis-table heatmap term-matrix">
-            <caption>Mean attainment at each observed course and academic-term intersection. Each assessment measure has equal weight; the cell mean is compared with the mean of those measures’ configured targets.</caption>
+            <caption>Mean attainment at each observed course, {% if config.EDITION == 'utrgv_mece' %}campus, {% endif %}and academic-term intersection. Each assessment measure has equal weight; the cell mean is compared with the mean of those measures’ configured targets.</caption>
             <thead>
               <tr>
                 <th scope="col">Course</th>
+                {% if config.EDITION == 'utrgv_mece' %}<th scope="col">Campus</th>{% endif %}
                 {% for term in analysis.terms %}<th scope="col">{{ term.label }}</th>{% endfor %}
               </tr>
             </thead>
             <tbody>
               {% for course in analysis.courses %}
                 {% set course_rows = analysis.rows|selectattr('course_id', 'equalto', course.key)|list %}
+                {% if config.EDITION == 'utrgv_mece' %}
+                {% for campus_item in analysis.campuses if campus_item.label in ('Edinburg', 'Brownsville') %}
+                {% set campus_rows = course_rows|selectattr('campus', 'equalto', campus_item.label)|list %}
                 <tr>
-                  <th scope="row">
+                  <th scope="row"{% if not loop.first %} class="muted"{% endif %}>
                     <strong>{{ course.label.split(' — ', 1)[0] }}</strong>
                     {% if ' — ' in course.label %}<small>{{ course.label.split(' — ', 1)[1] }}</small>{% endif %}
                   </th>
+                  <th scope="row">{{ campus_item.label }}</th>
                   {% for term in analysis.terms %}
-                    {% set cell_rows = course_rows|selectattr('term_id', 'equalto', term.key)|list %}
+                    {% set cell_rows = campus_rows|selectattr('term_id', 'equalto', term.key)|list %}
                     {% if cell_rows %}
                       {% set cell_mean = ((cell_rows|sum(attribute='attainment')) / (cell_rows|length))|round(1) %}
                       {% set cell_target = ((cell_rows|sum(attribute='target')) / (cell_rows|length))|round(1) %}
@@ -257,8 +262,23 @@
                     {% endif %}
                   {% endfor %}
                 </tr>
+                {% endfor %}
+                {% else %}
+                <tr>
+                  <th scope="row"><strong>{{ course.label.split(' — ', 1)[0] }}</strong>{% if ' — ' in course.label %}<small>{{ course.label.split(' — ', 1)[1] }}</small>{% endif %}</th>
+                  {% for term in analysis.terms %}
+                    {% set cell_rows = course_rows|selectattr('term_id', 'equalto', term.key)|list %}
+                    {% if cell_rows %}
+                      {% set cell_mean = ((cell_rows|sum(attribute='attainment')) / (cell_rows|length))|round(1) %}
+                      {% set cell_target = ((cell_rows|sum(attribute='target')) / (cell_rows|length))|round(1) %}
+                      {% set cell_met = cell_mean >= cell_target %}
+                      <td class="{{ 'met' if cell_met else 'missed' }}"><strong class="matrix-value">{{ cell_mean }}% attainment</strong><small>Target {{ cell_target }}% · {{ 'Meets target' if cell_met else 'Below target' }}</small><small>{{ cell_rows|length }} measure{{ '' if cell_rows|length == 1 else 's' }}</small></td>
+                    {% else %}<td class="empty"><strong class="matrix-value">—</strong><small>No evidence</small></td>{% endif %}
+                  {% endfor %}
+                </tr>
+                {% endif %}
               {% else %}
-                <tr><td colspan="{{ (analysis.terms|length) + 1 }}">No matching course and term evidence.</td></tr>
+                <tr><td colspan="{{ (analysis.terms|length) + (2 if config.EDITION == 'utrgv_mece' else 1) }}">No matching course and term evidence.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -268,32 +288,42 @@
     </section>
 
     <section class="panel analysis-panel" aria-labelledby="outcome-analysis-heading">
-      <div class="panel-head"><div><p class="eyebrow">Student outcomes</p><h2 id="outcome-analysis-heading">Outcome attainment vs target</h2><p>Bars show the mean across included measures; the marker shows the mean of their configured targets.</p></div></div>
+      <div class="panel-head"><div><p class="eyebrow">Student outcomes</p><h2 id="outcome-analysis-heading">Outcome attainment vs target</h2><p>{% if config.EDITION == 'utrgv_mece' %}<strong>{{ analysis.methodology.campus_scope.label }}.</strong> {% endif %}Bars show the mean across included measures; the marker shows the mean of their configured targets.</p></div></div>
       {{ summary_bars(analysis.outcomes, 'No outcome evidence is available in this selection.') }}
       <details class="analysis-data"><summary>View outcome values</summary>{{ summary_table(analysis.outcomes, 'Outcome', 'Outcome-level statistics for the selected evidence.') }}</details>
     </section>
 
     <section class="panel analysis-panel" aria-labelledby="term-summary-heading">
-      <div class="panel-head"><div><p class="eyebrow">Term summary</p><h2 id="term-summary-heading">Overall attainment by term</h2><p>This view combines the selected courses and exposes gaps in longitudinal evidence.</p></div></div>
-      {{ summary_bars(analysis.terms, 'No term evidence is available in this selection.') }}
+      <div class="panel-head"><div><p class="eyebrow">Term summary</p><h2 id="term-summary-heading">{% if config.EDITION == 'utrgv_mece' %}Campus attainment by term{% else %}Overall attainment by term{% endif %}</h2><p>{% if config.EDITION == 'utrgv_mece' %}Term means remain separated by campus so a combined average cannot conceal different Edinburg and Brownsville patterns.{% else %}This view combines the selected courses and exposes gaps in longitudinal evidence.{% endif %}</p></div></div>
+      {% if config.EDITION == 'utrgv_mece' %}
+      <div class="table-wrap"><table class="analysis-table"><caption>Campus-specific term means across the selected courses. Missing campus-term evidence remains blank.</caption><thead><tr><th scope="col">Campus</th><th scope="col">Term</th><th scope="col" class="number">Measures</th><th scope="col" class="number">Attainment</th><th scope="col" class="number">Target / gap</th></tr></thead><tbody>
+        {% for campus_item in analysis.campuses if campus_item.label in ('Edinburg', 'Brownsville') %}
+          {% for term in analysis.terms %}{% set cell_rows = analysis.rows|selectattr('campus', 'equalto', campus_item.label)|selectattr('term_id', 'equalto', term.key)|list %}
+            {% if cell_rows %}{% set cell_mean = ((cell_rows|sum(attribute='attainment')) / (cell_rows|length)) %}{% set cell_target = ((cell_rows|sum(attribute='target')) / (cell_rows|length)) %}<tr><th scope="row">{{ campus_item.label }}</th><td>{{ term.label }}</td><td class="number">{{ cell_rows|length }}</td><td class="number">{{ cell_mean|round(1) }}%</td><td class="number">{{ cell_target|round(1) }}% / {{ '%+.1f'|format(cell_mean - cell_target) }}</td></tr>{% endif %}
+          {% endfor %}
+        {% else %}<tr><td colspan="5">No campus-specific term evidence is available.</td></tr>{% endfor %}
+      </tbody></table></div>
+      {% else %}{{ summary_bars(analysis.terms, 'No term evidence is available in this selection.') }}{% endif %}
     </section>
   </div>
 
   <section class="panel analysis-panel" aria-labelledby="indicator-term-heading">
-    <div class="panel-head"><div><p class="eyebrow">PI + Bloom trends</p><h2 id="indicator-term-heading">Performance-indicator and Bloom attainment by term</h2><p>Each performance indicator has its own panel. Colored symbols show Bloom-level term means, outlined points show overall PI means, fitted lines show descriptive trends, and dashed red lines show configured targets. No confidence bands are used.</p></div></div>
+    <div class="panel-head"><div><p class="eyebrow">PI + Bloom trends</p><h2 id="indicator-term-heading">Performance-indicator and Bloom attainment by term</h2><p>{% if config.EDITION == 'utrgv_mece' %}Each performance indicator has its own panel, with Edinburg and Brownsville on the same axes. Campus color and line style identify the campus; marker shape identifies Bloom level. Missing observations stay blank, and no confidence bands are used.{% else %}Each performance indicator has its own panel. Colored symbols show Bloom-level term means, outlined points show overall PI means, fitted lines show descriptive trends, and dashed red lines show configured targets. No confidence bands are used.{% endif %}</p></div></div>
     {{ chart_figure(charts.semester_indicator, 'tall') }}
     <details class="analysis-data"><summary>View term × indicator values</summary>
       <div class="heatmap-wrap">
         <table class="heatmap analysis-table">
-          <caption>Mean attainment for each observed performance-indicator, Bloom-level, and academic-term intersection.</caption>
-          <thead><tr><th scope="col">Indicator / Bloom level</th>{% for term in analysis.terms %}<th scope="col">{{ term.label }}</th>{% endfor %}</tr></thead>
+          <caption>Mean attainment for each observed performance-indicator, Bloom-level, {% if config.EDITION == 'utrgv_mece' %}campus, {% endif %}and academic-term intersection.</caption>
+          <thead><tr><th scope="col">Indicator / Bloom level</th>{% if config.EDITION == 'utrgv_mece' %}<th scope="col">Campus</th>{% endif %}{% for term in analysis.terms %}<th scope="col">{{ term.label }}</th>{% endfor %}</tr></thead>
           <tbody>
             {% for item in analysis.indicator_bloom %}
               {% set series_rows = analysis.rows|selectattr('outcome_id', 'equalto', item.outcome_id)|selectattr('indicator_id', 'equalto', item.indicator_id)|selectattr('bloom_level', 'equalto', item.level)|list %}
+              {% if config.EDITION == 'utrgv_mece' %}{% for campus_item in analysis.campuses if campus_item.label in ('Edinburg', 'Brownsville') %}{% set campus_rows = series_rows|selectattr('campus', 'equalto', campus_item.label)|list %}
               <tr>
                 <th scope="row">{{ item.label }}</th>
+                <th scope="row">{{ campus_item.label }}</th>
                 {% for term in analysis.terms %}
-                  {% set cell_rows = series_rows|selectattr('term_id', 'equalto', term.key)|list %}
+                  {% set cell_rows = campus_rows|selectattr('term_id', 'equalto', term.key)|list %}
                   {% if cell_rows %}
                     {% set cell_mean = ((cell_rows|sum(attribute='attainment')) / (cell_rows|length))|round(1) %}
                     {% set cell_target = ((cell_rows|sum(attribute='target')) / (cell_rows|length))|round(1) %}
@@ -303,6 +333,9 @@
                   {% endif %}
                 {% endfor %}
               </tr>
+              {% endfor %}{% else %}
+              <tr><th scope="row">{{ item.label }}</th>{% for term in analysis.terms %}{% set cell_rows = series_rows|selectattr('term_id', 'equalto', term.key)|list %}{% if cell_rows %}{% set cell_mean = ((cell_rows|sum(attribute='attainment')) / (cell_rows|length))|round(1) %}{% set cell_target = ((cell_rows|sum(attribute='target')) / (cell_rows|length))|round(1) %}<td class="{{ 'met' if cell_mean >= cell_target else 'missed' }}"><span>{{ cell_mean }}%</span><small>{{ cell_rows|length }} measure{{ '' if cell_rows|length == 1 else 's' }} · {{ 'met' if cell_mean >= cell_target else 'below' }} target {{ cell_target }}%</small></td>{% else %}<td class="empty"><span>—</span><small>No evidence</small></td>{% endif %}{% endfor %}</tr>
+              {% endif %}
             {% endfor %}
           </tbody>
         </table>
@@ -311,13 +344,13 @@
   </section>
 
   <section class="panel analysis-panel" aria-labelledby="indicator-analysis-heading">
-    <div class="panel-head"><div><p class="eyebrow">Performance indicators</p><h2 id="indicator-analysis-heading">Indicator attainment vs target</h2><p>Indicator descriptions and Bloom levels provide the detailed connection between course evidence and each student outcome.</p></div></div>
+    <div class="panel-head"><div><p class="eyebrow">Performance indicators</p><h2 id="indicator-analysis-heading">Indicator attainment vs target</h2><p>{% if config.EDITION == 'utrgv_mece' %}<strong>{{ analysis.methodology.campus_scope.label }}.</strong> {% endif %}Indicator descriptions and Bloom levels provide the detailed connection between course evidence and each student outcome.</p></div></div>
     {{ summary_bars(analysis.indicators, 'No performance-indicator evidence is available in this selection.') }}
     <details class="analysis-data"><summary>View performance-indicator values</summary>{{ summary_table(analysis.indicators, 'Performance indicator', 'Indicator-level statistics for the selected evidence.') }}</details>
   </section>
 
   <section class="panel analysis-panel" aria-labelledby="bloom-heading">
-    <div class="panel-head"><div><p class="eyebrow">Cognitive demand</p><h2 id="bloom-heading">Bloom-level attainment and nonparametric comparison</h2><p>The boxplot retains the original Bloom analysis while the table and test results expose the values used.</p></div></div>
+    <div class="panel-head"><div><p class="eyebrow">Cognitive demand</p><h2 id="bloom-heading">Bloom-level attainment and nonparametric comparison</h2><p>{% if config.EDITION == 'utrgv_mece' %}<strong>{{ analysis.methodology.campus_scope.label }}.</strong> {% endif %}The boxplot retains the original Bloom analysis while the table and test results expose the values used.</p></div></div>
     <div class="analysis-grid">
       <div>
         {{ chart_figure(charts.bloom_boxplot, 'tall') }}
@@ -359,8 +392,16 @@
 
   <div class="analysis-grid">
     <section class="panel analysis-panel" aria-labelledby="trend-heading">
-      <div class="panel-head"><div><p class="eyebrow">Longitudinal signal</p><h2 id="trend-heading">Linear attainment trend</h2><p>A descriptive least-squares trend across chronologically ordered term means.</p></div></div>
-      {% if analysis.trend.slope is number %}
+      <div class="panel-head"><div><p class="eyebrow">Longitudinal signal</p><h2 id="trend-heading">{% if config.EDITION == 'utrgv_mece' %}Campus-specific linear attainment trends{% else %}Linear attainment trend{% endif %}</h2><p>{% if config.EDITION == 'utrgv_mece' %}Edinburg and Brownsville term means and fitted trends share one time axis for direct comparison. Each campus model uses only that campus’s observed evidence.{% else %}A descriptive least-squares trend across chronologically ordered term means.{% endif %}</p></div></div>
+      {% if config.EDITION == 'utrgv_mece' %}
+        {{ chart_figure(charts.trend_line, 'tall') }}
+        <div class="statistics-grid">
+          {% for campus_trend in analysis.campus_trends if campus_trend.campus in selected_campuses %}
+          <article class="statistic-card"><h3>{{ campus_trend.campus }}</h3>{% if campus_trend.trend.slope is number %}<p class="statistic-value">{{ '%+.3f'|format(campus_trend.trend.slope) }} points / term</p><p>{{ 'Increasing' if campus_trend.trend.slope > 0 else ('Decreasing' if campus_trend.trend.slope < 0 else 'Stable') }} across {{ campus_trend.observed_term_count }} observed terms · R² = {{ '%.3f'|format(campus_trend.trend.r_squared) }} · p = {{ '%.4f'|format(campus_trend.trend.p_value) }}</p>{% else %}<p class="statistic-value">Trend unavailable</p><p>{{ campus_trend.trend.reason }}</p>{% endif %}</article>
+          {% else %}<article class="statistic-card"><h3>No campus trend</h3><p>No Edinburg or Brownsville term evidence is available.</p></article>{% endfor %}
+        </div>
+        <div class="table-wrap"><table class="analysis-table"><caption>Campus-specific observed term means and fitted values. A dash means that campus has no evidence in that term or too few terms for a fitted value.</caption><thead><tr><th scope="col">Campus</th><th scope="col">Term</th><th scope="col" class="number">Measures</th><th scope="col" class="number">Observed mean</th><th scope="col" class="number">Fitted mean</th></tr></thead><tbody>{% for campus_trend in analysis.campus_trends if campus_trend.campus in selected_campuses %}{% for term_label in campus_trend.term_labels %}{% set term_index = loop.index0 %}{% set observed = campus_trend.attainment_values[term_index] %}{% if campus_trend.trend.status == 'available' and observed is number %}{% set fitted = campus_trend.trend.intercept + (campus_trend.trend.slope * term_index) %}{% else %}{% set fitted = none %}{% endif %}<tr><th scope="row">{{ campus_trend.campus }}</th><td>{{ term_label }}</td><td class="number">{{ campus_trend.counts[term_index] }}</td><td class="number">{{ (observed|round(1)) ~ '%' if observed is number else '—' }}</td><td class="number">{{ (fitted|round(1)) ~ '%' if fitted is number else '—' }}</td></tr>{% endfor %}{% else %}<tr><td colspan="5">No campus-specific trend values are available.</td></tr>{% endfor %}</tbody></table></div>
+      {% elif analysis.trend.slope is number %}
         {{ chart_figure(charts.trend_line, 'tall') }}
         <div class="statistics-grid">
           <article class="statistic-card"><h3>Estimated change</h3><p class="statistic-value">{{ '%+.3f'|format(analysis.trend.slope) }} points / term unit</p><p>{{ analysis.trend.direction|title }} trend across {{ analysis.trend.term_count }} terms.</p></article>
@@ -380,7 +421,7 @@
     </section>
 
     <section class="panel analysis-panel" aria-labelledby="heatmap-heading">
-      <div class="panel-head"><div><p class="eyebrow">Curriculum alignment</p><h2 id="heatmap-heading">Course × outcome heatmap</h2><p>Mean attainment for each observed course/outcome intersection; blank cells indicate no evidence.</p></div></div>
+      <div class="panel-head"><div><p class="eyebrow">Curriculum alignment</p><h2 id="heatmap-heading">Course × outcome heatmap</h2><p>{% if config.EDITION == 'utrgv_mece' %}<strong>{{ analysis.methodology.campus_scope.label }}.</strong> {% endif %}Mean attainment for each observed course/outcome intersection; blank cells indicate no evidence.</p></div></div>
       {{ chart_figure(charts.course_outcome_heatmap, 'tall') }}
       <details class="analysis-data"><summary>View heatmap values</summary>
         <div class="heatmap-wrap">
