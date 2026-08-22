@@ -3,7 +3,7 @@
 
 {% macro chart_figure(chart, height='') %}
   {% if chart.available %}
-    <div class="chart-frame {{ height }}">
+    <div class="chart-frame {{ height }}{{ ' pi-block-chart' if chart.chart_type == 'combined_pi_trend' else '' }}"{% if chart.chart_type == 'combined_pi_trend' and chart.metadata and chart.metadata.display_width_px %} style="--analysis-chart-width:{{ chart.metadata.display_width_px }}px" tabindex="0" role="region" aria-label="Scrollable combined performance-indicator chart"{% endif %}>
       <img src="{{ chart.data_uri }}" alt="{{ chart.alt_text }}">
     </div>
   {% else %}
@@ -308,7 +308,7 @@
   </div>
 
   <section class="panel analysis-panel" aria-labelledby="indicator-term-heading">
-    <div class="panel-head"><div><p class="eyebrow">PI + Bloom trends</p><h2 id="indicator-term-heading">Performance-indicator and Bloom attainment by term</h2><p>{% if config.EDITION == 'utrgv_mece' %}Each performance indicator has its own panel, with Edinburg and Brownsville on the same axes. Campus color and line style identify the campus; marker shape identifies Bloom level. Missing observations stay blank, and no confidence bands are used.{% else %}Each performance indicator has its own panel. Colored symbols show Bloom-level term means, outlined points show overall PI means, fitted lines show descriptive trends, and dashed red lines show configured targets. No confidence bands are used.{% endif %}</p></div></div>
+    <div class="panel-head"><div><p class="eyebrow">PI + Bloom trends</p><h2 id="indicator-term-heading">Performance-indicator and Bloom attainment by term</h2><p>{% if config.EDITION == 'utrgv_mece' %}All performance indicators share one chart. Each PI occupies a labeled horizontal block with the same chronological term sequence. Campus color and line style identify Edinburg and Brownsville; marker shape identifies Bloom level. Observed symbols are not connected, and no confidence bands are used.{% else %}Each performance indicator has its own panel. Colored symbols show Bloom-level term means, outlined points show overall PI means, fitted lines show descriptive trends, and dashed red lines show configured targets. No confidence bands are used.{% endif %}</p></div></div>
     {{ chart_figure(charts.semester_indicator, 'tall') }}
     <details class="analysis-data"><summary>View term × indicator values</summary>
       <div class="heatmap-wrap">

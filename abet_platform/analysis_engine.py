@@ -1649,6 +1649,8 @@ def _indicator_chart_overall(analysis: dict[str, Any], pyplot) -> dict[str, Any]
             _number(first.get("outcome_order")) or 0,
             natural_key(first.get("outcome_code") or ""),
             natural_key(first.get("indicator_code") or first.get("indicator_label")),
+            natural_key(first.get("outcome_id") or ""),
+            natural_key(first.get("indicator_id") or ""),
         )
 
     panels = sorted(panel_rows.items(), key=panel_sort_key)
@@ -1974,7 +1976,7 @@ def _indicator_chart_overall(analysis: dict[str, Any], pyplot) -> dict[str, Any]
 
 
 def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
-    """Render PI facets with separate campus series when campus is known."""
+    """Render campus-aware PI blocks on one shared attainment axis."""
     if not analysis["campus_trends"]:
         return _indicator_chart_overall(analysis, pyplot)
     title = "Performance indicator and Bloom attainment by term"
@@ -2017,26 +2019,33 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         )
 
     panels = sorted(panel_rows.items(), key=panel_sort_key)
-    column_count = min(3, len(panels))
-    row_count = math.ceil(len(panels) / column_count)
-    figure, axes = pyplot.subplots(
-        row_count,
-        column_count,
-        figsize=(
-            max(7.8, 4.15 * column_count),
-            max(5.8, 3.35 * row_count + 1.25),
-        ),
-        sharex=True,
-        sharey=True,
-        squeeze=False,
-    )
-    flat_axes = list(axes.flat)
-    for unused in flat_axes[len(panels) :]:
-        figure.delaxes(unused)
-    flat_axes = flat_axes[: len(panels)]
     term_labels = [str(term["label"]) for term in terms]
+    short_term_labels = [short_term(label) for label in term_labels]
     term_index = {term["key"]: index for index, term in enumerate(terms)}
     multiple_outcomes = len({key[0] for key, _items in panels}) > 1
+    campuses = [item["campus"] for item in analysis["campus_trends"]]
+    if len(campuses) == 1:
+        campus_x_offsets = {campuses[0]: 0.0}
+    else:
+        offsets = np.linspace(-0.12, 0.12, len(campuses))
+        campus_x_offsets = {
+            campus: float(offset) for campus, offset in zip(campuses, offsets, strict=True)
+        }
+
+    # Size the encoded PNG to keep every repeated term label legible. The web
+    # presentation can use this intrinsic width for horizontal scrolling when
+    # a program selects many performance indicators.
+    display_width_px = int(
+        min(
+            2400,
+            max(
+                900,
+                220 + len(panels) * (84 * len(terms) + 60),
+            ),
+        )
+    )
+    figure, axis = pyplot.subplots(figsize=(display_width_px / 125.0, 7.0))
+
     bloom_levels = sorted(
         {str(row["bloom_level"]) for row in rows},
         key=lambda level: (_BLOOM_RANK.get(level, len(BLOOM_ORDER)), level),
@@ -2047,12 +2056,17 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         ]
         for index, level in enumerate(bloom_levels)
     }
-    panel_metadata: list[dict[str, Any]] = []
+    block_gap = 1.35
+    block_stride = len(terms) + block_gap
+    pi_blocks: list[dict[str, Any]] = []
+    x_tick_positions: list[float] = []
+    x_tick_labels: list[str] = []
+    x_tick_display_labels: list[str] = []
     observed_cells = 0
     latest_results: list[tuple[str, str, float, float]] = []
     available_slopes: list[tuple[str, str, float]] = []
 
-    for axis, (panel_key, items) in zip(flat_axes, panels):
+    for block_index, (panel_key, items) in enumerate(panels):
         outcome_id, indicator_id = panel_key
         first = items[0]
         outcome_code = str(first.get("outcome_code") or "Outcome")
@@ -2069,14 +2083,69 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
             if indicator_code == "Unmapped source PI"
             else None
         )
+        block_start = float(block_index * block_stride)
+        block_positions = [
+            block_start + float(index) for index in range(len(terms))
+        ]
+        block_center = (block_positions[0] + block_positions[-1]) / 2.0
+        x_tick_positions.extend(block_positions)
+        x_tick_labels.extend(term_labels)
+        x_tick_display_labels.extend(short_term_labels)
+
         campus_series = _longitudinal_campus_series(
             items, terms, trend_block_reason=block_reason
         )
-        _plot_longitudinal_campus_series(axis, campus_series)
-
+        observed_term_mean_count = 0
+        target_point_count = 0
         bloom_point_count = 0
-        for campus in [item["campus"] for item in campus_series]:
+        for series in campus_series:
+            campus = series["campus"]
             style = CAMPUS_STYLES[campus]
+            x_offset = campus_x_offsets[campus]
+            observed_indices = [
+                index
+                for index, value in enumerate(series["attainment_values"])
+                if value is not None
+            ]
+            observed_term_mean_count += len(observed_indices)
+
+            target_indices = [
+                index
+                for index, value in enumerate(series["target_values"])
+                if value is not None
+            ]
+            if target_indices:
+                axis.scatter(
+                    [block_positions[index] + x_offset for index in target_indices],
+                    [float(series["target_values"][index]) for index in target_indices],
+                    s=88,
+                    marker="_",
+                    color=style["color"],
+                    linewidths=1.55,
+                    alpha=0.9,
+                    zorder=3,
+                    label=f"{panel_label} · {campus} configured target",
+                )
+                target_point_count += len(target_indices)
+
+            trend = series["trend"]
+            if trend["status"] == "available":
+                fitted_local_x = np.linspace(
+                    min(observed_indices), max(observed_indices), 80
+                )
+                axis.plot(
+                    block_start + fitted_local_x + x_offset,
+                    trend["slope"] * fitted_local_x + trend["intercept"],
+                    color=style["color"],
+                    linestyle=style["linestyle"],
+                    linewidth=2.2,
+                    zorder=4,
+                    label=f"{panel_label} · {campus} fitted trend",
+                )
+                available_slopes.append(
+                    (panel_label, campus, float(trend["slope"]))
+                )
+
             for level in bloom_levels:
                 x_values: list[float] = []
                 y_values: list[float] = []
@@ -2089,7 +2158,9 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
                         and str(item["bloom_level"]) == level
                     ]
                     if evidence:
-                        x_values.append(float(term_index[term["key"]]))
+                        x_values.append(
+                            block_positions[term_index[term["key"]]] + x_offset
+                        )
                         y_values.append(
                             _mean([float(item["attainment"]) for item in evidence])
                         )
@@ -2097,17 +2168,17 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
                     axis.scatter(
                         x_values,
                         y_values,
-                        s=21,
+                        s=48,
                         marker=bloom_markers[level],
-                        facecolors="none",
-                        edgecolors=style["color"],
-                        linewidths=0.85,
-                        alpha=0.82,
-                        zorder=5,
+                        facecolors=style["color"],
+                        edgecolors="white",
+                        linewidths=0.7,
+                        alpha=0.94,
+                        zorder=6,
+                        label="_nolegend_",
                     )
                     bloom_point_count += len(x_values)
 
-        for series in campus_series:
             observed_cells += series["observed_term_count"]
             observed = [
                 (index, value)
@@ -2127,27 +2198,34 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
                             float(latest_target),
                         )
                     )
-            if series["trend"]["status"] == "available":
-                available_slopes.append(
-                    (panel_label, series["campus"], series["trend"]["slope"])
-                )
 
-        axis.set_title(panel_label, fontsize=10.5, weight="bold")
-        axis.set_xticks(
-            np.arange(len(terms), dtype=float),
-            [short_term(label) for label in term_labels],
-            rotation=38,
-            ha="right",
-            fontsize=7.5,
+        axis.text(
+            block_center,
+            1.018,
+            panel_label,
+            transform=axis.get_xaxis_transform(),
+            ha="center",
+            va="bottom",
+            fontsize=10,
+            weight="bold",
+            color="#15212b",
+            clip_on=False,
         )
-        axis.grid(axis="y", alpha=0.18)
-        for spine in ("top", "right"):
-            axis.spines[spine].set_visible(False)
-        panel_metadata.append(
+        pi_blocks.append(
             {
+                "block_index": block_index,
+                "block_label": panel_label,
+                "x_start": block_positions[0],
+                "x_end": block_positions[-1],
+                "x_positions": block_positions,
+                "outcome_id": outcome_id,
+                "indicator_id": indicator_id,
                 "outcome_code": outcome_code,
                 "indicator_code": indicator_code,
                 "point_count": bloom_point_count,
+                "observed_point_count": bloom_point_count,
+                "observed_term_mean_count": observed_term_mean_count,
+                "target_point_count": target_point_count,
                 "measure_count": len(items),
                 "term_labels": term_labels,
                 "campus_series": campus_series,
@@ -2164,31 +2242,80 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
     upper = min(100.0, 5.0 * math.ceil((max(scale_values) + 5.0) / 5.0))
     if upper - lower < 30.0:
         lower = max(0.0, upper - 30.0)
-    for index, axis in enumerate(flat_axes):
-        axis.set_ylim(lower, upper)
-        if index % column_count == 0:
-            axis.set_ylabel("Attainment (%)", fontsize=9)
-    handles: dict[str, Any] = {}
-    for axis in flat_axes:
-        axis_handles, axis_labels = axis.get_legend_handles_labels()
-        for handle, label in zip(axis_handles, axis_labels, strict=True):
-            if "segment" not in label and "target path" not in label:
-                handles.setdefault(label, handle)
-    if handles:
+    axis.set_ylim(lower, upper)
+    axis.set_xlim(x_tick_positions[0] - 0.6, x_tick_positions[-1] + 0.6)
+    axis.set_xticks(
+        x_tick_positions,
+        x_tick_display_labels,
+        rotation=38,
+        ha="right",
+        fontsize=7.5,
+    )
+    axis.set_ylabel("Attainment (%)", fontsize=9)
+    axis.set_xlabel(
+        "Chronologically ordered observed terms repeated within each PI block",
+        fontsize=9,
+    )
+    axis.tick_params(axis="y", labelsize=8)
+    axis.grid(axis="y", alpha=0.18)
+    for spine in ("top", "right"):
+        axis.spines[spine].set_visible(False)
+
+    from matplotlib.lines import Line2D
+
+    campus_handles: list[Any] = []
+    campus_labels: list[str] = []
+    for campus in campuses:
+        style = CAMPUS_STYLES[campus]
+        campus_handles.extend(
+            [
+                Line2D(
+                    [],
+                    [],
+                    linestyle="None",
+                    marker=style["marker"],
+                    markerfacecolor=style["color"],
+                    markeredgecolor="white",
+                    markersize=6,
+                ),
+                Line2D(
+                    [],
+                    [],
+                    color=style["color"],
+                    linestyle=style["linestyle"],
+                    linewidth=2.2,
+                ),
+                Line2D(
+                    [],
+                    [],
+                    color=style["color"],
+                    linestyle="None",
+                    marker="_",
+                    markersize=9,
+                    markeredgewidth=1.5,
+                ),
+            ]
+        )
+        campus_labels.extend(
+            [
+                f"{campus} observed",
+                f"{campus} fitted trend",
+                f"{campus} configured target",
+            ]
+        )
+    if campus_handles:
         figure.legend(
-            list(handles.values()),
-            list(handles),
+            campus_handles,
+            campus_labels,
             title="Campus and series type",
             loc="lower center",
-            bbox_to_anchor=(0.5, 0.11),
-            ncol=min(6, len(handles)),
+            bbox_to_anchor=(0.5, 0.12),
+            ncol=min(6, len(campus_handles)),
             frameon=False,
             fontsize=8,
             title_fontsize=8,
         )
     if bloom_levels:
-        from matplotlib.lines import Line2D
-
         bloom_handles = [
             Line2D(
                 [],
@@ -2207,14 +2334,14 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
             bloom_levels,
             title="Bloom level",
             loc="lower center",
-            bbox_to_anchor=(0.5, 0.008),
+            bbox_to_anchor=(0.5, 0.012),
             ncol=min(7, len(bloom_levels)),
             frameon=False,
             fontsize=8,
             title_fontsize=8,
         )
     figure.suptitle(
-        "PI-wise campus attainment trends",
+        "PI-wise campus attainment trends on a shared scale",
         x=0.5,
         y=0.995,
         fontsize=14,
@@ -2223,13 +2350,16 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
     possible_cells = len(panels) * len(terms) * len(analysis["campus_trends"])
     missing_cells = possible_cells - observed_cells
     insights = [
-        f"{len(panels)} performance-indicator panel{'s' if len(panels) != 1 else ''} "
-        f"keep campus term means separate across {len(terms)} terms.",
+        f"One shared attainment axis contains {len(panels)} horizontally separated "
+        f"performance-indicator block{'s' if len(panels) != 1 else ''}, each repeating "
+        f"the same {len(terms)} chronologically ordered observed terms.",
         f"Evidence covers {observed_cells} of {possible_cells} possible "
         f"indicator-campus-term cells; {missing_cells} have no evidence.",
-        "Bloom levels use distinct marker shapes; marker and fitted-line color identifies campus.",
-        "Each campus uses its own configured target on the chronologically ordered "
-        "observed-term axis, and campus-specific missing terms are not bridged.",
+        "Observed Bloom-level term means are unconnected scatter points; only "
+        "campus-specific fits through the campus term means are drawn as lines.",
+        "Each campus uses unconnected underscore markers for its own configured target "
+        "in each populated term; no pooled or global target line is shown.",
+        "Bloom levels use distinct marker shapes; point and fitted-line color identifies campus.",
     ]
     if latest_results:
         latest_met = sum(value >= target for _, _, value, target in latest_results)
@@ -2245,12 +2375,20 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         )
     if any(row.get("status") != "approved" for row in rows):
         insights.insert(0, "Preview includes records that are not approved for official reporting.")
-    campuses = [item["campus"] for item in analysis["campus_trends"]]
     metadata = {
         "facet_by": "performance_indicator",
+        "layout": "single_axis_pi_blocks",
+        "axis_count": 1,
         "panel_count": len(panels),
-        "panels": panel_metadata,
+        "pi_blocks": pi_blocks,
+        "panels": pi_blocks,
         "term_labels": term_labels,
+        "x_tick_positions": x_tick_positions,
+        "x_tick_labels": x_tick_labels,
+        "x_tick_display_labels": x_tick_display_labels,
+        "campus_x_offsets": campus_x_offsets,
+        "block_gap": block_gap,
+        "display_width_px": display_width_px,
         "campus_series": analysis["campus_trends"],
         "campus_styles": {
             campus: dict(CAMPUS_STYLES[campus]) for campus in campuses
@@ -2263,9 +2401,11 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         "target_mode": "configured_by_campus_and_term",
         "missing_terms_connected": False,
     }
+    block_labels = ", ".join(block["block_label"] for block in pi_blocks)
     alt = (
-        f"Faceted performance-indicator chart with {len(panels)} panels and separate "
-        f"{', '.join(campuses)} observed, configured-target, and fitted trend series. "
+        f"Single shared-axis performance-indicator chart with {len(panels)} horizontally "
+        f"separated PI blocks ({block_labels}) and separate {', '.join(campuses)} "
+        "observed, configured-target, and fitted trend series. "
         + " ".join(insights)
     )
     return _chart(
@@ -2273,10 +2413,10 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         title=title,
         alt_text=alt,
         pyplot=pyplot,
-        chart_type="faceted_pi_trend",
+        chart_type="combined_pi_trend",
         insights=insights,
         metadata=metadata,
-        layout_rect=(0.0, 0.235, 1.0, 0.955),
+        layout_rect=(0.0, 0.295, 1.0, 0.915),
     )
 
 
