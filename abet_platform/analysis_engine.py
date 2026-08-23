@@ -8,6 +8,7 @@ weighting modern rows by sample size would make the combined analysis misleading
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import math
 import re
@@ -27,6 +28,20 @@ CAMPUS_STYLES = {
     "Edinburg": {"color": "#003638", "marker": "o", "linestyle": "-"},
     "Brownsville": {"color": "#ee7f2f", "marker": "D", "linestyle": "-."},
 }
+# A restrained subset of the Okabe-Ito and Paul Tol palettes. Every color has
+# sufficient contrast on white for markers, fitted lines, and PI block labels;
+# deterministic cycling keeps dense selections stable without assigning color
+# to campus identity.
+PI_COLOR_PALETTE = (
+    "#0072B2",
+    "#D55E00",
+    "#009E73",
+    "#AA3377",
+    "#9A6700",
+    "#6F4C9B",
+    "#397CA3",
+    "#4D4D4D",
+)
 
 
 def _as_dict(row: Any) -> dict[str, Any]:
@@ -58,6 +73,17 @@ def _display_indicator_code(value: Any) -> str:
     if code.upper().endswith("-H"):
         return f"{code[:-2]} (source alias)"
     return code
+
+
+def _pi_palette_index(outcome_code: Any, indicator_code: Any) -> int:
+    """Assign a stable palette slot without relying on Python's randomized hash."""
+    indicator_text = str(indicator_code or "").strip()
+    numeric_suffix = re.search(r"(\d+)(?!.*\d)", indicator_text)
+    if numeric_suffix and int(numeric_suffix.group(1)) > 0:
+        return (int(numeric_suffix.group(1)) - 1) % len(PI_COLOR_PALETTE)
+    identity = f"{outcome_code or ''}\x1f{indicator_text}".casefold().encode("utf-8")
+    digest = hashlib.sha256(identity).digest()
+    return int.from_bytes(digest[:8], "big") % len(PI_COLOR_PALETTE)
 
 
 def _normalized_rows(
@@ -1296,7 +1322,7 @@ def _semester_course_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
     scale_values = [float(row["attainment"]) for row in rows] + [
         float(row["target"]) for row in rows
     ]
-    upper = min(100.0, 5.0 * math.ceil((max(scale_values) + 5.0) / 5.0))
+    upper = 110.0
     lower = max(0.0, 5.0 * math.floor((min(scale_values) - 5.0) / 5.0))
     if upper - lower < 30:
         lower = max(0.0, upper - 30.0)
@@ -1519,7 +1545,7 @@ def _bloom_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         else "Kruskal–Wallis not computable"
     )
     axis.text(0.99, 0.02, annotation, transform=axis.transAxes, ha="right", va="bottom", fontsize=8)
-    axis.set_ylim(0, max(100.0, max(value for values in groups.values() for value in values) + 5))
+    axis.set_ylim(0, 110)
     axis.set_ylabel("Attainment (%)")
     axis.set_title(title, loc="left", weight="bold")
     axis.grid(axis="y", alpha=0.2)
@@ -1697,13 +1723,9 @@ def _indicator_chart_overall(analysis: dict[str, Any], pyplot) -> dict[str, Any]
         float(row["target"]) for row in rows
     ]
     lower = max(0.0, 5.0 * math.floor((min(all_scale_values) - 5.0) / 5.0))
-    upper = min(100.0, 5.0 * math.ceil((max(all_scale_values) + 5.0) / 5.0))
+    upper = 110.0
     if upper - lower < 30.0:
-        padding = (30.0 - (upper - lower)) / 2.0
-        lower = max(0.0, lower - padding)
-        upper = min(100.0, upper + padding)
-        if upper - lower < 30.0:
-            lower = max(0.0, upper - 30.0)
+        lower = max(0.0, upper - 30.0)
 
     multiple_outcomes = len({key[0] for key, _ in panels}) > 1
     panel_metadata: list[dict[str, Any]] = []
@@ -2031,6 +2053,37 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         campus_x_offsets = {
             campus: float(offset) for campus, offset in zip(campuses, offsets, strict=True)
         }
+    campus_encoding_templates = {
+        "Edinburg": {
+            "color_source": "pi_block",
+            "observation_fill": "filled",
+            "observation_edge": "white",
+            "line_style": "-",
+            "line_style_label": "solid",
+            "line_style_code": "-",
+            "position": "left",
+            "target_marker": "underscore",
+            "target_alpha": 1.0,
+        },
+        "Brownsville": {
+            "color_source": "pi_block",
+            "observation_fill": "hollow",
+            "observation_edge": "pi_color",
+            "line_style": "-.",
+            "line_style_label": "dash-dot",
+            "line_style_code": "-.",
+            "position": "right",
+            "target_marker": "underscore",
+            "target_alpha": 1.0,
+        },
+    }
+    campus_encodings = {
+        campus: {
+            **campus_encoding_templates[campus],
+            "x_offset": campus_x_offsets[campus],
+        }
+        for campus in campuses
+    }
 
     # Size the encoded PNG to keep every repeated term label legible. The web
     # presentation can use this intrinsic width for horizontal scrolling when
@@ -2078,6 +2131,8 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
             if multiple_outcomes
             else indicator_code
         )
+        palette_index = _pi_palette_index(outcome_code, indicator_code)
+        pi_color = PI_COLOR_PALETTE[palette_index]
         block_reason = (
             "Unmapped source rows may combine distinct indicators."
             if indicator_code == "Unmapped source PI"
@@ -2100,8 +2155,13 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         bloom_point_count = 0
         for series in campus_series:
             campus = series["campus"]
-            style = CAMPUS_STYLES[campus]
+            encoding = campus_encodings[campus]
             x_offset = campus_x_offsets[campus]
+            series["plot_encoding"] = {
+                **encoding,
+                "pi_color": pi_color,
+                "palette_index": palette_index,
+            }
             observed_indices = [
                 index
                 for index, value in enumerate(series["attainment_values"])
@@ -2120,9 +2180,9 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
                     [float(series["target_values"][index]) for index in target_indices],
                     s=140,
                     marker="_",
-                    color=style["color"],
-                    linewidths=2.2,
-                    alpha=0.9,
+                    color=pi_color,
+                    linewidths=2.2 if campus == "Edinburg" else 1.8,
+                    alpha=encoding["target_alpha"],
                     zorder=3,
                     label=f"{panel_label} · {campus} configured target",
                 )
@@ -2136,8 +2196,8 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
                 axis.plot(
                     block_start + fitted_local_x + x_offset,
                     trend["slope"] * fitted_local_x + trend["intercept"],
-                    color=style["color"],
-                    linestyle=style["linestyle"],
+                    color=pi_color,
+                    linestyle=encoding["line_style_code"],
                     linewidth=3.0,
                     zorder=4,
                     label=f"{panel_label} · {campus} fitted trend",
@@ -2170,12 +2230,19 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
                         y_values,
                         s=90,
                         marker=bloom_markers[level],
-                        facecolors=style["color"],
-                        edgecolors="white",
-                        linewidths=1.0,
-                        alpha=0.94,
+                        facecolors=(
+                            pi_color
+                            if encoding["observation_fill"] == "filled"
+                            else "none"
+                        ),
+                        edgecolors=(
+                            "white"
+                            if encoding["observation_edge"] == "white"
+                            else pi_color
+                        ),
+                        linewidths=1.0 if campus == "Edinburg" else 1.8,
                         zorder=6,
-                        label="_nolegend_",
+                        label=f"{panel_label} · {campus} observed",
                     )
                     bloom_point_count += len(x_values)
 
@@ -2208,13 +2275,15 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
             va="bottom",
             fontsize=15,
             weight="bold",
-            color="#15212b",
+            color=pi_color,
             clip_on=False,
         )
         pi_blocks.append(
             {
                 "block_index": block_index,
                 "block_label": panel_label,
+                "pi_color": pi_color,
+                "palette_index": palette_index,
                 "x_start": block_positions[0],
                 "x_end": block_positions[-1],
                 "x_positions": block_positions,
@@ -2268,54 +2337,52 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
 
     from matplotlib.lines import Line2D
 
+    # Neutral proxy handles explain campus semantics without suggesting that a
+    # campus owns one color; the PI header supplies the color used in its block.
+    encoding_sample_color = "#40515e"
     campus_handles: list[Any] = []
     campus_labels: list[str] = []
     for campus in campuses:
-        style = CAMPUS_STYLES[campus]
-        campus_handles.extend(
-            [
-                Line2D(
-                    [],
-                    [],
-                    linestyle="None",
-                    marker=style["marker"],
-                    markerfacecolor=style["color"],
-                    markeredgecolor="white",
-                    markersize=9,
-                ),
-                Line2D(
-                    [],
-                    [],
-                    color=style["color"],
-                    linestyle=style["linestyle"],
-                    linewidth=3.0,
-                ),
-                Line2D(
-                    [],
-                    [],
-                    color=style["color"],
-                    linestyle="None",
-                    marker="_",
-                    markersize=13,
-                    markeredgewidth=2.2,
-                ),
-            ]
+        encoding = campus_encodings[campus]
+        filled = encoding["observation_fill"] == "filled"
+        campus_handles.append(
+            Line2D(
+                [],
+                [],
+                color=encoding_sample_color,
+                linestyle=encoding["line_style"],
+                linewidth=3.0,
+                marker="o",
+                markerfacecolor=(encoding_sample_color if filled else "white"),
+                markeredgecolor=("white" if filled else encoding_sample_color),
+                markeredgewidth=1.8 if not filled else 1.0,
+                markersize=9,
+            )
         )
-        campus_labels.extend(
-            [
-                f"{campus} observed",
-                f"{campus} fitted trend",
-                f"{campus} configured target",
-            ]
+        campus_labels.append(
+            f"{campus}: observed {encoding['observation_fill']} · fitted trend "
+            f"{encoding['line_style_label']} · {encoding['position']}"
         )
+    campus_handles.append(
+        Line2D(
+            [],
+            [],
+            color=encoding_sample_color,
+            linestyle="None",
+            marker="_",
+            markersize=13,
+            markeredgewidth=2.2,
+        )
+    )
+    campus_labels.append("Configured target underscore — campus-dodged position")
     if campus_handles:
         figure.legend(
             campus_handles,
             campus_labels,
-            title="Campus and series type",
+            title="Campus encoding (PI block supplies color)",
             loc="lower center",
-            bbox_to_anchor=(0.5, 0.12),
-            ncol=min(6, len(campus_handles)),
+            bbox_to_anchor=(0.5, 0.11),
+            ncol=min(3, len(campus_handles)),
             frameon=False,
             fontsize=11,
             title_fontsize=12,
@@ -2337,7 +2404,7 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         figure.legend(
             bloom_handles,
             bloom_levels,
-            title="Bloom level",
+            title="Bloom level (marker shape)",
             loc="lower center",
             bbox_to_anchor=(0.5, 0.012),
             ncol=min(7, len(bloom_levels)),
@@ -2354,17 +2421,26 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
     )
     possible_cells = len(panels) * len(terms) * len(analysis["campus_trends"])
     missing_cells = possible_cells - observed_cells
+    campus_encoding_summary = " ".join(
+        f"{campus} uses {campus_encodings[campus]['observation_fill']} observations, "
+        f"{campus_encodings[campus]['line_style_label']} fits, and "
+        f"{campus_encodings[campus]['position']}-dodged positions."
+        for campus in campuses
+    )
     insights = [
         f"One shared attainment axis contains {len(panels)} horizontally separated "
         f"performance-indicator block{'s' if len(panels) != 1 else ''}, each repeating "
         f"the same {len(terms)} chronologically ordered observed terms.",
         f"Evidence covers {observed_cells} of {possible_cells} possible "
         f"indicator-campus-term cells; {missing_cells} have no evidence.",
-        "Observed Bloom-level term means are unconnected scatter points; only "
-        "campus-specific fits through the campus term means are drawn as lines.",
+        f"PI color is a supplemental cue assigned stably from an "
+        f"{len(PI_COLOR_PALETTE)}-color cycle; PI labels and horizontal block positions "
+        "remain authoritative. Observed Bloom-level term means are unconnected "
+        "scatter points; only campus-specific fits through the campus term means "
+        "are drawn as lines.",
         "Each campus uses unconnected underscore markers for its own configured target "
         "in each populated term; no pooled or global target line is shown.",
-        "Bloom levels use distinct marker shapes; point and fitted-line color identifies campus.",
+        f"{campus_encoding_summary} Bloom level remains encoded by marker shape.",
     ]
     if latest_results:
         latest_met = sum(value >= target for _, _, value, target in latest_results)
@@ -2394,13 +2470,17 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         "campus_x_offsets": campus_x_offsets,
         "block_gap": block_gap,
         "display_width_px": display_width_px,
+        "pi_palette": list(PI_COLOR_PALETTE),
+        "pi_palette_assignment": "numeric_suffix_then_sha256",
+        "pi_palette_cycle_length": len(PI_COLOR_PALETTE),
+        "campus_encodings": campus_encodings,
         "campus_series": analysis["campus_trends"],
         "campus_styles": {
-            campus: dict(CAMPUS_STYLES[campus]) for campus in campuses
+            campus: dict(campus_encodings[campus]) for campus in campuses
         },
         "campus_scope": _campus_scope(rows),
-        "legend_title": "Campus and series type",
-        "bloom_legend_title": "Bloom level",
+        "legend_title": "Campus encoding (PI block supplies color)",
+        "bloom_legend_title": "Bloom level (marker shape)",
         "bloom_levels": bloom_levels,
         "bloom_markers": bloom_markers,
         "target_mode": "configured_by_campus_and_term",
@@ -2410,7 +2490,9 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
     alt = (
         f"Single shared-axis performance-indicator chart with {len(panels)} horizontally "
         f"separated PI blocks ({block_labels}) and separate {', '.join(campuses)} "
-        "observed, configured-target, and fitted trend series. "
+        "observed, configured-target, and fitted trend series. PI color is a "
+        f"supplemental cue from a repeating {len(PI_COLOR_PALETTE)}-color cycle; "
+        f"the PI label and block position remain authoritative. {campus_encoding_summary} "
         + " ".join(insights)
     )
     return _chart(
@@ -2441,7 +2523,7 @@ def _trend_chart_overall(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
     mean_target = _mean([float(row["target"]) for row in analysis["rows"]])
     axis.axhline(mean_target, color="#b94747", linestyle="--", linewidth=1.2, label=f"Mean target {mean_target:.1f}%")
     axis.set_xticks(x, [item["label"] for item in terms], rotation=35, ha="right")
-    axis.set_ylim(0, max(100.0, max(observed + fitted) + 5))
+    axis.set_ylim(0, 110)
     axis.set_ylabel("Attainment (%)")
     axis.set_title(title, loc="left", weight="bold")
     axis.grid(axis="y", alpha=0.2)
@@ -2487,7 +2569,7 @@ def _trend_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         if value is not None
     ]
     lower = max(0.0, 5.0 * math.floor((min(values) - 5.0) / 5.0))
-    upper = min(100.0, 5.0 * math.ceil((max(values) + 5.0) / 5.0))
+    upper = 110.0
     if upper - lower < 30.0:
         lower = max(0.0, upper - 30.0)
     axis.set_ylim(lower, upper)
