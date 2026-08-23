@@ -2044,7 +2044,7 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
             ),
         )
     )
-    figure, axis = pyplot.subplots(figsize=(display_width_px / 125.0, 7.0))
+    figure, axis = pyplot.subplots(figsize=(display_width_px / 125.0, 9.4))
 
     bloom_levels = sorted(
         {str(row["bloom_level"]) for row in rows},
@@ -2118,10 +2118,10 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
                 axis.scatter(
                     [block_positions[index] + x_offset for index in target_indices],
                     [float(series["target_values"][index]) for index in target_indices],
-                    s=88,
+                    s=140,
                     marker="_",
                     color=style["color"],
-                    linewidths=1.55,
+                    linewidths=2.2,
                     alpha=0.9,
                     zorder=3,
                     label=f"{panel_label} · {campus} configured target",
@@ -2138,7 +2138,7 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
                     trend["slope"] * fitted_local_x + trend["intercept"],
                     color=style["color"],
                     linestyle=style["linestyle"],
-                    linewidth=2.2,
+                    linewidth=3.0,
                     zorder=4,
                     label=f"{panel_label} · {campus} fitted trend",
                 )
@@ -2168,11 +2168,11 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
                     axis.scatter(
                         x_values,
                         y_values,
-                        s=48,
+                        s=90,
                         marker=bloom_markers[level],
                         facecolors=style["color"],
                         edgecolors="white",
-                        linewidths=0.7,
+                        linewidths=1.0,
                         alpha=0.94,
                         zorder=6,
                         label="_nolegend_",
@@ -2206,7 +2206,7 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
             transform=axis.get_xaxis_transform(),
             ha="center",
             va="bottom",
-            fontsize=10,
+            fontsize=15,
             weight="bold",
             color="#15212b",
             clip_on=False,
@@ -2239,7 +2239,10 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         float(row["target"]) for row in rows
     ]
     lower = max(0.0, 5.0 * math.floor((min(scale_values) - 5.0) / 5.0))
-    upper = min(100.0, 5.0 * math.ceil((max(scale_values) + 5.0) / 5.0))
+    # Percentages can legitimately reach 100%. Keeping the ceiling at 110%
+    # prevents a perfect observed or target marker from touching the frame in
+    # report and Word exports.
+    upper = 110.0
     if upper - lower < 30.0:
         lower = max(0.0, upper - 30.0)
     axis.set_ylim(lower, upper)
@@ -2249,14 +2252,16 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         x_tick_display_labels,
         rotation=38,
         ha="right",
-        fontsize=7.5,
+        fontsize=11,
     )
-    axis.set_ylabel("Attainment (%)", fontsize=9)
+    axis.set_ylabel("Attainment (%)", fontsize=14)
     axis.set_xlabel(
         "Chronologically ordered observed terms repeated within each PI block",
-        fontsize=9,
+        fontsize=14,
+        labelpad=12,
     )
-    axis.tick_params(axis="y", labelsize=8)
+    axis.tick_params(axis="x", labelsize=11, pad=5)
+    axis.tick_params(axis="y", labelsize=11)
     axis.grid(axis="y", alpha=0.18)
     for spine in ("top", "right"):
         axis.spines[spine].set_visible(False)
@@ -2276,14 +2281,14 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
                     marker=style["marker"],
                     markerfacecolor=style["color"],
                     markeredgecolor="white",
-                    markersize=6,
+                    markersize=9,
                 ),
                 Line2D(
                     [],
                     [],
                     color=style["color"],
                     linestyle=style["linestyle"],
-                    linewidth=2.2,
+                    linewidth=3.0,
                 ),
                 Line2D(
                     [],
@@ -2291,8 +2296,8 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
                     color=style["color"],
                     linestyle="None",
                     marker="_",
-                    markersize=9,
-                    markeredgewidth=1.5,
+                    markersize=13,
+                    markeredgewidth=2.2,
                 ),
             ]
         )
@@ -2312,8 +2317,8 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
             bbox_to_anchor=(0.5, 0.12),
             ncol=min(6, len(campus_handles)),
             frameon=False,
-            fontsize=8,
-            title_fontsize=8,
+            fontsize=11,
+            title_fontsize=12,
         )
     if bloom_levels:
         bloom_handles = [
@@ -2324,7 +2329,7 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
                 marker=bloom_markers[level],
                 markerfacecolor="none",
                 markeredgecolor="#40515e",
-                markersize=5.5,
+                markersize=8.5,
                 label=level,
             )
             for level in bloom_levels
@@ -2337,14 +2342,14 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
             bbox_to_anchor=(0.5, 0.012),
             ncol=min(7, len(bloom_levels)),
             frameon=False,
-            fontsize=8,
-            title_fontsize=8,
+            fontsize=11,
+            title_fontsize=12,
         )
     figure.suptitle(
         "PI-wise campus attainment trends on a shared scale",
         x=0.5,
         y=0.995,
-        fontsize=14,
+        fontsize=21,
         weight="bold",
     )
     possible_cells = len(panels) * len(terms) * len(analysis["campus_trends"])
@@ -2416,7 +2421,7 @@ def _indicator_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         chart_type="combined_pi_trend",
         insights=insights,
         metadata=metadata,
-        layout_rect=(0.0, 0.295, 1.0, 0.915),
+        layout_rect=(0.0, 0.31, 1.0, 0.90),
     )
 
 
