@@ -1,9 +1,276 @@
 {% extends 'base.html' %}
 {% block title %}Improvement · {{ program.name }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><p class="eyebrow">Continuous improvement</p><h1>Close the loop</h1><p class="muted">Turn findings into owned actions, document implementation, and verify impact in the next cycle.</p></div></div>
-<div class="{{ 'split asymmetric' if g.membership.role in ('owner','admin','coordinator') }}">
-  <section class="panel"><div class="panel-head"><div><p class="eyebrow">Action register</p><h2>{{ 'Program improvement work' if g.membership.role in ('owner','admin','coordinator') else 'Improvement work for your courses' }}</h2></div></div>{% if actions %}<div class="action-list">{% for action in actions %}<article><div class="action-top"><span class="status {{ action.status }}">{{ action.status.replace('_',' ') }}</span><small>{{ action.outcome_code or 'Program-wide' }}{% if action.due_on %} · due {{ action.due_on }}{% endif %}</small></div><h3>{{ action.title }}</h3><p>{{ action.description }}</p><small>Owner: {{ action.owner_name or 'Unassigned' }}</small>{% if g.membership.role in ('owner','admin','coordinator') or (g.membership.role == 'faculty' and action.owner_user_id == g.user.id) %}<form method="post" action="{{ url_for('platform.action_update', action_id=action.id) }}" class="action-update"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><select name="status">{% for value in ('planned','in_progress','completed','verified','cancelled') %}<option value="{{ value }}" {{ 'selected' if action.status == value }}>{{ value.replace('_',' ')|title }}</option>{% endfor %}</select><input name="impact_summary" value="{{ action.impact_summary }}" placeholder="Impact or verification note"><button class="button secondary small">Update</button></form>{% endif %}</article>{% endfor %}</div>{% else %}<div class="empty-compact">No course-linked improvement actions are available.</div>{% endif %}</section>
-  {% if g.membership.role in ('owner','admin','coordinator') %}<aside class="panel"><p class="eyebrow">Create action</p><h2>Plan a documented change</h2><form method="post" class="stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Title<input name="title" required></label><label>Student outcome<select name="outcome_id"><option value="">Program-wide</option>{% for item in outcomes %}<option value="{{ item.id }}">{{ item.code }} · {{ item.description|truncate(45) }}</option>{% endfor %}</select></label><label>Description<textarea name="description" rows="5" required></textarea></label><label>Owner<select name="owner_user_id"><option value="">Unassigned</option>{% for item in members %}<option value="{{ item.id }}">{{ item.full_name }}</option>{% endfor %}</select></label><label>Due date<input type="date" name="due_on"></label><label>Initial status<select name="status"><option value="planned">Planned</option><option value="in_progress">In progress</option></select></label><button class="button primary">Create action</button></form></aside>{% endif %}
+{% set has_continuous_improvement_story = continuous_improvement_story is defined and continuous_improvement_story %}
+<div class="page-head ci-page-head">
+  <div>
+    <p class="eyebrow">Continuous improvement</p>
+    <h1>Close the loop</h1>
+    <p class="muted">Turn findings into owned actions, document implementation, and verify impact in the next cycle.</p>
+  </div>
+  {% if has_continuous_improvement_story %}
+    <div class="head-actions no-print">
+      <button class="button primary" type="button" data-print>Print / save PDF</button>
+    </div>
+  {% endif %}
+</div>
+
+{% if has_continuous_improvement_story %}
+  {% set story = continuous_improvement_story %}
+  <article class="ci-story" aria-labelledby="ci-story-title">
+    <header class="ci-hero">
+      <div>
+        <p class="ci-cycle-label">{{ story.cycle_label }}</p>
+        <h2 id="ci-story-title">{{ story.title }}</h2>
+        <p class="ci-lede">{{ story.lede }}</p>
+      </div>
+      <p class="ci-evidence-note"><strong>Evidence basis</strong><span>{{ story.evidence_note }}</span></p>
+    </header>
+
+    {% if story.summary_cards %}
+      <section class="ci-summary-grid" aria-label="Continuous-improvement summary">
+        {% for card in story.summary_cards %}
+          <article class="ci-summary-card ci-tone-{{ card.tone|default('neutral') }}">
+            <strong>{{ card.value }}</strong>
+            <span>{{ card.label }}</span>
+            <small>{{ card.detail }}</small>
+          </article>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    <section class="panel ci-methodology" aria-labelledby="ci-methodology-title">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Interpretation guide</p>
+          <h2 id="ci-methodology-title">How the evidence was evaluated</h2>
+        </div>
+      </div>
+      <dl>
+        <div><dt>Framework</dt><dd>{{ story.methodology.framework }}</dd></div>
+        <div><dt>Attainment measure</dt><dd>{{ story.methodology.attainment }}</dd></div>
+        <div><dt>Target</dt><dd>{{ story.methodology.target }}</dd></div>
+        <div><dt>Decision cutoff</dt><dd>{{ story.methodology.cutoff }}</dd></div>
+      </dl>
+      <p class="ci-caution"><strong>Interpretation boundary:</strong> {{ story.methodology.caution }}</p>
+    </section>
+
+    <section class="panel ci-loop" aria-labelledby="ci-loop-title">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Closed-loop process</p>
+          <h2 id="ci-loop-title">From assessment evidence to the next decision</h2>
+        </div>
+      </div>
+      <ol class="ci-loop-steps">
+        {% for step in story.loop_steps %}
+          <li>
+            <span class="ci-loop-number" aria-hidden="true">{{ step.number }}</span>
+            <div><h3>{{ step.title }}</h3><p>{{ step.text }}</p></div>
+          </li>
+        {% endfor %}
+      </ol>
+    </section>
+
+    <section class="ci-case-section" aria-labelledby="ci-cases-title">
+      <div class="ci-section-heading">
+        <p class="eyebrow">Outcome evidence chains</p>
+        <h2 id="ci-cases-title">How evidence became action and a next decision</h2>
+        <p>Each case separates the original finding, the intervention that was actually implemented, the documented follow-up evidence, and the resulting decision.</p>
+      </div>
+      <div class="ci-case-list">
+        {% for case in story.cases %}
+          <article class="ci-case" id="{{ case.slug }}" aria-labelledby="{{ case.slug }}-title">
+            <header class="ci-case-head">
+              <div>
+                <p class="eyebrow">{{ case.outcome }}</p>
+                <h3 id="{{ case.slug }}-title">{{ case.title }}</h3>
+                <p class="ci-case-scope"><strong>Evidence scope:</strong> {{ case.scope }}</p>
+              </div>
+              <span class="ci-case-status ci-status-{{ case.status_key }}">{{ case.status }}</span>
+            </header>
+            <p class="ci-case-conclusion">{{ case.conclusion }}</p>
+
+            <ol class="ci-evidence-chain" aria-label="{{ case.outcome }} evidence chain">
+              {% for stage in case.chain %}
+                <li>
+                  <span>{{ stage.stage }}</span>
+                  <h4>{{ stage.title }}</h4>
+                  <p>{{ stage.text }}</p>
+                  {% if stage['items'] %}
+                    <ul>{% for item in stage['items'] %}<li>{{ item }}</li>{% endfor %}</ul>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ol>
+
+            {% if case.metrics %}
+              <div class="table-wrap ci-metric-table">
+                <table>
+                  <caption>{{ case.outcome }} documented baseline and follow-up results</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Period</th>
+                      <th scope="col">Measure</th>
+                      <th scope="col">Observed value</th>
+                      <th scope="col">Target</th>
+                      <th scope="col">Interpretation</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for metric in case.metrics %}
+                      <tr>
+                        <th scope="row">{{ metric.period }}</th>
+                        <td>{{ metric.measure }}</td>
+                        <td><strong>{{ metric.value }}</strong></td>
+                        <td>{{ metric.target }}</td>
+                        <td>{{ metric.interpretation }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% endif %}
+
+            <div class="ci-decision-grid">
+              <section aria-labelledby="{{ case.slug }}-decision-title">
+                <p class="eyebrow">Decision</p>
+                <h4 id="{{ case.slug }}-decision-title">What the department concluded</h4>
+                <p>{{ case.decision }}</p>
+              </section>
+              <section aria-labelledby="{{ case.slug }}-next-title">
+                <p class="eyebrow">Next cycle</p>
+                <h4 id="{{ case.slug }}-next-title">What will be monitored</h4>
+                <p>{{ case.next_step }}</p>
+              </section>
+            </div>
+
+            {% if case.sources %}
+              <footer class="ci-case-sources">
+                <strong>Case evidence:</strong>
+                <ul>
+                  {% for source in case.sources %}
+                    <li><cite>{{ source.document }}</cite>{% if source.reference %}, {{ source.reference }}{% endif %}</li>
+                  {% endfor %}
+                </ul>
+              </footer>
+            {% endif %}
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    {% if story.proposal_comparison %}
+      <section class="panel ci-comparison" aria-labelledby="ci-comparison-title">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Implementation record</p>
+            <h2 id="ci-comparison-title">Proposed versus actually implemented</h2>
+            <p>The implemented column records departmental action; it is intentionally distinct from the original proposal.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <caption>Traceability from the identified need to the implemented response</caption>
+            <thead><tr><th scope="col">Outcome</th><th scope="col">Identified need</th><th scope="col">Originally proposed</th><th scope="col">Actually implemented</th><th scope="col">Evidence boundary</th></tr></thead>
+            <tbody>
+              {% for item in story.proposal_comparison %}
+                <tr><th scope="row">{{ item.outcome }}</th><td>{{ item.need }}</td><td>{{ item.proposed }}</td><td><strong>{{ item.implemented }}</strong></td><td>{{ item.boundary }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+
+    {% if story.response_tiers %}
+      <section class="panel ci-response-tiers" aria-labelledby="ci-response-title">
+        <div class="panel-head"><div><p class="eyebrow">Decision rules</p><h2 id="ci-response-title">Graduated response to assessment findings</h2></div></div>
+        <div class="ci-response-grid">
+          {% for item in story.response_tiers %}
+            <article>
+              <span>{{ item.tier }}</span>
+              <h3>{{ item.title }}</h3>
+              <p><strong>Used when:</strong> {{ item.when_used }}</p>
+              <p><strong>Examples:</strong> {{ item.examples }}</p>
+            </article>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    {% if story.monitoring %}
+      <section class="panel ci-monitoring" aria-labelledby="ci-monitoring-title">
+        <div class="panel-head"><div><p class="eyebrow">Forward plan</p><h2 id="ci-monitoring-title">Decisions carried into the next assessment cycle</h2></div></div>
+        <div class="table-wrap">
+          <table>
+            <caption>Outcome-level monitoring status and next-cycle decision</caption>
+            <thead><tr><th scope="col">Outcome</th><th scope="col">Current status</th><th scope="col">Next decision</th></tr></thead>
+            <tbody>{% for item in story.monitoring %}<tr><th scope="row">{{ item.outcome }}</th><td>{{ item.status }}</td><td>{{ item.decision }}</td></tr>{% endfor %}</tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+
+    {% if story.sources %}
+      <section class="panel ci-source-index" aria-labelledby="ci-sources-title">
+        <div class="panel-head"><div><p class="eyebrow">Document trail</p><h2 id="ci-sources-title">Criterion 4 evidence sources</h2></div></div>
+        <ol>
+          {% for source in story.sources %}
+            <li><cite>{{ source.document }}</cite><span>{{ source.role }}</span>{% if source.references %}<small>{{ source.references }}</small>{% endif %}</li>
+          {% endfor %}
+        </ol>
+      </section>
+    {% endif %}
+  </article>
+{% endif %}
+
+<div class="{{ 'split asymmetric ci-action-workspace' if g.membership.role in ('owner','admin','coordinator') }}">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Action register</p>
+        <h2>{% if has_continuous_improvement_story %}Ongoing follow-up actions{% elif g.membership.role in ('owner','admin','coordinator') %}Program improvement work{% else %}Improvement work for your courses{% endif %}</h2>
+      </div>
+    </div>
+    {% if actions %}
+      <div class="action-list">
+        {% for action in actions %}
+          <article>
+            <div class="action-top"><span class="status {{ action.status }}">{{ action.status.replace('_',' ') }}</span><small>{{ action.outcome_code or 'Program-wide' }}{% if action.due_on %} · due {{ action.due_on }}{% endif %}</small></div>
+            <h3>{{ action.title }}</h3>
+            <p>{{ action.description }}</p>
+            <small>Owner: {{ action.owner_name or 'Unassigned' }}</small>
+            {% if g.membership.role in ('owner','admin','coordinator') or (g.membership.role == 'faculty' and action.owner_user_id == g.user.id) %}
+              <form method="post" action="{{ url_for('platform.action_update', action_id=action.id) }}" class="action-update no-print">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <select name="status" aria-label="Status for {{ action.title }}">{% for value in ('planned','in_progress','completed','verified','cancelled') %}<option value="{{ value }}" {{ 'selected' if action.status == value }}>{{ value.replace('_',' ')|title }}</option>{% endfor %}</select>
+                <input name="impact_summary" value="{{ action.impact_summary }}" placeholder="Impact or verification note" aria-label="Impact or verification note for {{ action.title }}">
+                <button class="button secondary small">Update</button>
+              </form>
+            {% endif %}
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-compact">No course-linked improvement actions are available.</div>
+    {% endif %}
+  </section>
+  {% if g.membership.role in ('owner','admin','coordinator') %}
+    <aside class="panel no-print">
+      <p class="eyebrow">Create action</p>
+      <h2>Plan a documented change</h2>
+      <form method="post" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Title<input name="title" required></label>
+        <label>Student outcome<select name="outcome_id"><option value="">Program-wide</option>{% for item in outcomes %}<option value="{{ item.id }}">{{ item.code }} · {{ item.description|truncate(45) }}</option>{% endfor %}</select></label>
+        <label>Description<textarea name="description" rows="5" required></textarea></label>
+        <label>Owner<select name="owner_user_id"><option value="">Unassigned</option>{% for item in members %}<option value="{{ item.id }}">{{ item.full_name }}</option>{% endfor %}</select></label>
+        <label>Due date<input type="date" name="due_on"></label>
+        <label>Initial status<select name="status"><option value="planned">Planned</option><option value="in_progress">In progress</option></select></label>
+        <button class="button primary">Create action</button>
+      </form>
+    </aside>
+  {% endif %}
 </div>
 {% endblock %}

@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Accreditation report · {{ program.name }}{% endblock %}
 {% block content %}
+{% set has_continuous_improvement_story = continuous_improvement_story is defined and continuous_improvement_story %}
 <div class="page-head no-print"><div><p class="eyebrow">Evidence presentation</p><h1>Accreditation narrative</h1><p class="muted">A print-ready continuous-improvement section generated from approved evidence.</p></div><div class="head-actions"><a class="button secondary" href="{{ url_for('platform.export_csv', evidence_scope='approved') }}">Download data</a><button class="button primary" type="button" data-print>Print / save PDF</button></div></div>
 <article class="report-document">
   <header class="report-cover"><p>{{ program.commission }} accreditation</p><h1>{{ program.name }}</h1><h2>{{ program.code }} · {{ program.degree_level }}</h2>{% if config.EDITION == 'utrgv_mece' %}<p><strong>Edinburg and Brownsville campuses</strong></p>{% endif %}<span>Continuous Improvement Evidence Report</span><small>Generated {{ request.environ.get('REQUEST_TIME', '') or 'from live approved evidence' }}</small></header>
@@ -8,7 +9,80 @@
   {% if config.EDITION == 'utrgv_mece' %}<section class="report-campus"><h2>2. Campus evidence coverage, attainment, and trends</h2><p>Approved assessment measures are summarized separately for Edinburg and Brownsville. Each measure has equal weight and is compared with its own configured target.</p><div class="campus-report-summary">{% for item in campus_summaries %}<article><strong>{{ item.label }}</strong><span>{{ item.mean|round(1) }}% mean attainment</span><small>{{ item.count }} measures · target {{ item.target|round(1) }}% · gap {{ '%+.1f'|format(item.target_gap) }} points</small></article>{% endfor %}</div>{% if campus_chart and campus_chart.available %}<figure class="report-campus-chart"><img src="{{ campus_chart.data_uri }}" alt="{{ campus_chart.alt_text }}"></figure>{% else %}<p><strong>Campus comparison not available:</strong> {{ campus_comparison.reason }}</p>{% endif %}<table><caption>Outcome-level campus comparison; no-evidence cells are not treated as zero.</caption><thead><tr><th>Outcome</th><th>Edinburg</th><th>Brownsville</th><th>Difference</th></tr></thead><tbody>{% for group in campus_comparison.groups %}{% set edinburg = group.campuses['Edinburg'] %}{% set brownsville = group.campuses['Brownsville'] %}<tr><th>{{ group.label }}</th><td>{{ (edinburg.mean|round(1)) ~ '% (' ~ edinburg.count ~ ')' if edinburg else 'No evidence' }}</td><td>{{ (brownsville.mean|round(1)) ~ '% (' ~ brownsville.count ~ ')' if brownsville else 'No evidence' }}</td><td>{{ ('%+.1f'|format(group.attainment_difference)) ~ ' points' if group.comparable else 'Not comparable' }}</td></tr>{% else %}<tr><td colspan="4">No campus evidence is available.</td></tr>{% endfor %}</tbody></table>{% if campus_trend_chart and campus_trend_chart.available %}<h3>Attainment trends by campus</h3><p>Edinburg and Brownsville use the same chronological axis. Each fitted line uses only that campus's observed term means; missing terms are not converted to zero.</p><figure class="report-campus-chart"><img src="{{ campus_trend_chart.data_uri }}" alt="{{ campus_trend_chart.alt_text }}"></figure>{% endif %}<table><caption>Campus-specific longitudinal model summary.</caption><thead><tr><th>Campus</th><th>Observed terms</th><th>Estimated change</th><th>Interpretation</th></tr></thead><tbody>{% for campus_trend in campus_trends %}<tr><th>{{ campus_trend.campus }}</th><td>{{ campus_trend.observed_term_count }}</td><td>{% if campus_trend.trend.slope is number %}{{ '%+.3f'|format(campus_trend.trend.slope) }} points / term{% else %}Not available{% endif %}</td><td>{% if campus_trend.trend.slope is number %}{{ campus_trend.trend.direction|title }} descriptive trend{% else %}{{ campus_trend.trend.reason }}{% endif %}</td></tr>{% else %}<tr><td colspan="4">No campus-specific trend evidence is available.</td></tr>{% endfor %}</tbody></table><p class="analysis-caveat">This is a descriptive comparison of assessment-measure attainment, not a causal or student-level significance test. Differences in courses, terms, instruments, populations, sample sizes, or coverage can affect the comparison.</p></section>{% endif %}
   <section><h2>{{ '3' if config.EDITION == 'utrgv_mece' else '2' }}. Student outcome attainment</h2><p>The table summarizes approved direct and indirect evidence. Attainment is the percentage of sampled students in rubric levels designated by the program as attained.</p><table><thead><tr><th>Outcome</th><th>Approved measures</th><th>Mean attainment</th><th>Mean target</th><th>Finding</th></tr></thead><tbody>{% for item in outcomes %}<tr><td>{{ item.label }}</td><td>{{ item.approved }}</td><td>{{ item.average }}%</td><td>{{ item.target }}%</td><td>{{ 'Target met' if item.met else 'Review indicated' }}</td></tr>{% else %}<tr><td colspan="5">No approved evidence is available.</td></tr>{% endfor %}</tbody></table></section>
   <section><h2>{{ '4' if config.EDITION == 'utrgv_mece' else '3' }}. Measure-level evidence</h2><table><thead><tr><th>Campus / term / course</th><th>Outcome and indicator</th><th>Tool and method</th><th>{{ 'EPAN distribution' if config.EDITION == 'utrgv_mece' else 'Sample' }}</th><th>Attainment</th><th>Interpretation</th></tr></thead><tbody>{% for row in records %}<tr><td><strong>{{ row.campus }}</strong><br>{{ row.term_label }}<br>{{ row.course_label }}</td><td>{{ row.outcome_label }}<br>{{ row.indicator_label }}</td><td>{{ row.assessment_tool }}<br>{{ row.method|title }}{% if row.bloom_level %} · {{ row.bloom_level }}{% endif %}{% if row.legacy_import_id %}<br>Edinburg source row #{{ row.legacy_source_record_id }}{% endif %}</td><td>{% if row.result_basis == 'percentages' %}Expert {{ row.expert_percent }}%<br>Practitioner {{ row.practitioner_percent }}%<br>Apprentice {{ row.apprentice_percent }}%<br>Novice {{ row.novice_percent }}%{% else %}{{ row.sample_size }}{% endif %}</td><td>{{ row.attainment }}% / {{ row.target }}% target</td><td>{{ row.observations or 'No interpretation recorded.' }}{% if row.action_notes %}<br><em>Action: {{ row.action_notes }}</em>{% endif %}{% if row.admin_revision_count %}<br><strong>Administrator changed:</strong> {{ row.admin_change_note }}<br><small>{{ row.admin_changed_by }} · {{ row.admin_changed_at }}</small>{% endif %}</td></tr>{% else %}<tr><td colspan="6">No approved evidence is available.</td></tr>{% endfor %}</tbody></table></section>
-  <section><h2>{{ '5' if config.EDITION == 'utrgv_mece' else '4' }}. Continuous-improvement actions</h2>{% for action in actions %}<article class="report-action"><h3>{{ action.title }} <span>{{ action.status.replace('_',' ') }}</span></h3><p>{{ action.description }}</p><small>{{ action.outcome_code or 'Program-wide' }} · Owner: {{ action.owner_name or 'Unassigned' }}{% if action.due_on %} · Due {{ action.due_on }}{% endif %}</small>{% if action.impact_summary %}<p><strong>Impact / verification:</strong> {{ action.impact_summary }}</p>{% endif %}</article>{% else %}<p>No improvement actions have been documented.</p>{% endfor %}</section>
-  <section><h2>{{ '6' if config.EDITION == 'utrgv_mece' else '5' }}. Evidence index</h2><ol>{% for item in evidence %}<li><strong>{{ item.title }}</strong> — {{ item.evidence_type|replace('_',' ') }}{% if item.description %}: {{ item.description }}{% endif %}</li>{% else %}<li>No supporting evidence items are indexed.</li>{% endfor %}</ol></section>
+  {% if has_continuous_improvement_story %}
+    {% set story = continuous_improvement_story %}
+    <section class="report-ci-story" aria-labelledby="report-ci-title">
+      <p class="report-ci-cycle">{{ story.cycle_label }}</p>
+      <h2 id="report-ci-title">5. Criterion 4 — Closing the continuous-improvement loop</h2>
+      <h3>{{ story.title }}</h3>
+      <p class="report-ci-lede">{{ story.lede }}</p>
+      <p class="report-ci-note"><strong>Evidence basis:</strong> {{ story.evidence_note }}</p>
+
+      {% if story.summary_cards %}
+        <div class="report-ci-summary" aria-label="Continuous-improvement summary">
+          {% for card in story.summary_cards %}
+            <article><strong>{{ card.value }}</strong><span>{{ card.label }}</span><small>{{ card.detail }}</small></article>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <h3>Closed-loop method</h3>
+      <ol class="report-ci-loop">
+        {% for step in story.loop_steps %}
+          <li><strong>{{ step.number }}. {{ step.title }}</strong><span>{{ step.text }}</span></li>
+        {% endfor %}
+      </ol>
+      <p class="report-ci-caution"><strong>Interpretation boundary:</strong> {{ story.methodology.caution }}</p>
+
+      <div class="report-ci-cases">
+        {% for case in story.cases %}
+          <article class="report-ci-case" aria-labelledby="report-{{ case.slug }}-title">
+            <header><div><p>{{ case.outcome }}</p><h3 id="report-{{ case.slug }}-title">{{ case.title }}</h3></div><span>{{ case.status }}</span></header>
+            <p><strong>Evidence scope:</strong> {{ case.scope }}</p>
+            <p>{{ case.conclusion }}</p>
+            <ol class="report-ci-chain" aria-label="{{ case.outcome }} evidence chain">
+              {% for stage in case.chain %}
+                <li><strong>{{ stage.stage }} — {{ stage.title }}</strong><span>{{ stage.text }}</span>{% if stage['items'] %}<ul>{% for item in stage['items'] %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}</li>
+              {% endfor %}
+            </ol>
+            {% if case.metrics %}
+              <table class="report-ci-metrics">
+                <caption>{{ case.outcome }} documented baseline and follow-up results</caption>
+                <thead><tr><th scope="col">Period</th><th scope="col">Measure</th><th scope="col">Value</th><th scope="col">Target</th><th scope="col">Interpretation</th></tr></thead>
+                <tbody>{% for metric in case.metrics %}<tr><th scope="row">{{ metric.period }}</th><td>{{ metric.measure }}</td><td><strong>{{ metric.value }}</strong></td><td>{{ metric.target }}</td><td>{{ metric.interpretation }}</td></tr>{% endfor %}</tbody>
+              </table>
+            {% endif %}
+            <div class="report-ci-decision"><p><strong>Department decision:</strong> {{ case.decision }}</p><p><strong>Next-cycle monitoring:</strong> {{ case.next_step }}</p></div>
+            {% if case.sources %}<p class="report-ci-sources"><strong>Case evidence:</strong> {% for source in case.sources %}<cite>{{ source.document }}</cite>{% if source.reference %} ({{ source.reference }}){% endif %}{{ '; ' if not loop.last }}{% endfor %}</p>{% endif %}
+          </article>
+        {% endfor %}
+      </div>
+
+      {% if story.proposal_comparison %}
+        <h3>Proposed versus actually implemented</h3>
+        <table class="report-ci-comparison">
+          <caption>Traceability from the identified need to the implemented response</caption>
+          <thead><tr><th scope="col">Outcome</th><th scope="col">Need</th><th scope="col">Originally proposed</th><th scope="col">Actually implemented</th><th scope="col">Evidence boundary</th></tr></thead>
+          <tbody>{% for item in story.proposal_comparison %}<tr><th scope="row">{{ item.outcome }}</th><td>{{ item.need }}</td><td>{{ item.proposed }}</td><td><strong>{{ item.implemented }}</strong></td><td>{{ item.boundary }}</td></tr>{% endfor %}</tbody>
+        </table>
+      {% endif %}
+
+      {% if story.monitoring %}
+        <h3>Next-cycle monitoring</h3>
+        <table>
+          <caption>Outcome-level monitoring status and decision</caption>
+          <thead><tr><th scope="col">Outcome</th><th scope="col">Current status</th><th scope="col">Decision</th></tr></thead>
+          <tbody>{% for item in story.monitoring %}<tr><th scope="row">{{ item.outcome }}</th><td>{{ item.status }}</td><td>{{ item.decision }}</td></tr>{% endfor %}</tbody>
+        </table>
+      {% endif %}
+
+      {% if story.sources %}
+        <h3>Document trail</h3>
+        <ol class="report-ci-source-index">{% for source in story.sources %}<li><cite>{{ source.document }}</cite> — {{ source.role }}{% if source.references %}; {{ source.references }}{% endif %}</li>{% endfor %}</ol>
+      {% endif %}
+    </section>
+  {% endif %}
+  <section><h2>{% if config.EDITION == 'utrgv_mece' %}{{ '6' if has_continuous_improvement_story else '5' }}{% else %}4{% endif %}. {{ 'Ongoing follow-up actions' if has_continuous_improvement_story else 'Continuous-improvement actions' }}</h2>{% for action in actions %}<article class="report-action"><h3>{{ action.title }} <span>{{ action.status.replace('_',' ') }}</span></h3><p>{{ action.description }}</p><small>{{ action.outcome_code or 'Program-wide' }} · Owner: {{ action.owner_name or 'Unassigned' }}{% if action.due_on %} · Due {{ action.due_on }}{% endif %}</small>{% if action.impact_summary %}<p><strong>Impact / verification:</strong> {{ action.impact_summary }}</p>{% endif %}</article>{% else %}<p>No improvement actions have been documented.</p>{% endfor %}</section>
+  <section><h2>{% if config.EDITION == 'utrgv_mece' %}{{ '7' if has_continuous_improvement_story else '6' }}{% else %}5{% endif %}. Evidence index</h2><ol>{% for item in evidence %}<li><strong>{{ item.title }}</strong> — {{ item.evidence_type|replace('_',' ') }}{% if item.description %}: {{ item.description }}{% endif %}</li>{% else %}<li>No supporting evidence items are indexed.</li>{% endfor %}</ol></section>
 </article>
 {% endblock %}

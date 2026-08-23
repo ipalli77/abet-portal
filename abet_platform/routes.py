@@ -45,6 +45,9 @@ from .security import (
     role_required,
     safe_next_url,
 )
+from .utrgv_continuous_improvement import (
+    get_utrgv_continuous_improvement_story,
+)
 
 
 bp = Blueprint("platform", __name__)
@@ -56,6 +59,17 @@ MAX_BULK_APPROVAL_RECORDS = 2000
 ALLOWED_UPLOADS = {
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt", ".png", ".jpg", ".jpeg"
 }
+
+
+def _continuous_improvement_story_for_manager() -> dict | None:
+    """Expose the program-wide Criterion 4 story only to UTRGV managers."""
+
+    if (
+        current_app.config.get("EDITION") == "utrgv_mece"
+        and g.membership["role"] in MANAGER_ROLES
+    ):
+        return get_utrgv_continuous_improvement_story()
+    return None
 
 STANDARD_OUTCOMES = [
     ("1", "Identify, formulate, and solve complex engineering problems by applying principles of engineering, science, and mathematics."),
@@ -2196,15 +2210,27 @@ def actions():
     ).fetchall()
     if g.membership["role"] in MANAGER_ROLES:
         members = db.execute(
-            """SELECT u.id,u.full_name FROM users u JOIN memberships m ON m.user_id=u.id
-               WHERE m.organization_id=? AND u.is_active=1 ORDER BY u.full_name""",
-            (session["organization_id"],),
+            """SELECT DISTINCT u.id,u.full_name
+                 FROM users u
+                 JOIN memberships m ON m.user_id=u.id
+                 JOIN program_members pm ON pm.user_id=u.id
+                WHERE m.organization_id=? AND pm.program_id=?
+                  AND u.is_active=1
+                ORDER BY u.full_name""",
+            (session["organization_id"], program["id"]),
         ).fetchall()
         outcomes = _load_dimensions(program["id"])["outcomes"]
     else:
         members = []
         outcomes = []
-    return render_template("actions.html", program=program, actions=rows, outcomes=outcomes, members=members)
+    return render_template(
+        "actions.html",
+        program=program,
+        actions=rows,
+        outcomes=outcomes,
+        members=members,
+        continuous_improvement_story=_continuous_improvement_story_for_manager(),
+    )
 
 
 @bp.post("/actions/<int:action_id>/update")
@@ -2381,6 +2407,7 @@ def report():
         unresolved_campus_count=unresolved_campus_count,
         actions=actions,
         evidence=evidence,
+        continuous_improvement_story=_continuous_improvement_story_for_manager(),
     )
 
 
