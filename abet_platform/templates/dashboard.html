@@ -1,31 +1,16 @@
 {% extends 'base.html' %}
+{% from 'presentation.html' import scope, outcome_cards, case_card with context %}
 {% block title %}Overview · {{ program.name }}{% endblock %}
 {% block content %}
-<div class="page-head">
-  <div><p class="eyebrow">{{ program.commission }} accreditation workspace</p><h1>{{ program.name }}</h1><p class="muted">A live view of evidence readiness, attainment, and improvement work.</p></div>
-  <div class="head-actions">
-    {% if programs|length > 1 %}<form method="post" action="{{ url_for('platform.select_program') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="next" value="{{ request.path }}"><select name="program_id" onchange="this.form.submit()">{% for item in programs %}<option value="{{ item.id }}" {{ 'selected' if item.id == program.id }}>{{ item.code }} · {{ item.name }}</option>{% endfor %}</select></form>{% endif %}
-    <a class="button primary" href="{{ url_for('platform.assessment_new') }}">New assessment</a>
-  </div>
-</div>
-<section class="metrics">
-  <article><span>Approved evidence</span><strong>{{ metrics.approved }}</strong><small>{{ metrics.total }} total records</small></article>
-  <article><span>Outcomes meeting target</span><strong>{{ metrics.met_rate }}%</strong><small>{{ metrics.met }} approved measures</small></article>
-  <article><span>Mean attainment</span><strong>{{ metrics.average }}%</strong><small>Approved records only</small></article>
-  <article><span>Awaiting review</span><strong>{{ metrics.submitted }}</strong><small>{{ metrics.draft }} working drafts</small></article>
-</section>
-<div class="split">
-  <section class="panel">
-    <div class="panel-head"><div><p class="eyebrow">Outcome health</p><h2>Attainment by student outcome</h2></div><a href="{{ url_for('platform.analytics') }}">Explore analysis →</a></div>
-    {% if outcome_summary %}<div class="bar-list">{% for item in outcome_summary %}<div class="bar-row"><div><strong>{{ item.label.split(':',1)[0] }}</strong><span>{{ item.average if item.average is not none else '—' }}%</span></div><div class="bar-track"><i class="{{ 'met' if item.met else 'missed' }}" style="width:{{ item.average or 0 }}%"></i><b style="left:{{ item.target }}%" title="Target {{ item.target }}%"></b></div><small>{{ item.approved }} approved measure{{ '' if item.approved == 1 else 's' }} · target {{ item.target }}%</small></div>{% endfor %}</div>{% else %}<div class="empty-compact">Approve assessment records to populate outcome health.</div>{% endif %}
-  </section>
-  <section class="panel">
-    <div class="panel-head"><div><p class="eyebrow">Close the loop</p><h2>Open improvement actions</h2></div><a href="{{ url_for('platform.actions') }}">Manage →</a></div>
-    {% if actions %}<div class="activity">{% for action in actions %}<article><span class="status {{ action.status }}">{{ action.status.replace('_',' ') }}</span><strong>{{ action.title }}</strong><small>{{ action.outcome_code or 'Program-wide' }} · {{ action.owner_name or 'Unassigned' }}{% if action.due_on %} · due {{ action.due_on }}{% endif %}</small></article>{% endfor %}</div>{% else %}<div class="empty-compact">No open actions. Add one when evidence suggests a change.</div>{% endif %}
-  </section>
-</div>
-<section class="panel">
-  <div class="panel-head"><div><p class="eyebrow">Latest evidence</p><h2>Recent assessment records</h2></div><a href="{{ url_for('platform.assessments') }}">View all →</a></div>
-  {% if recent %}<div class="table-wrap"><table><thead><tr><th>Campus</th><th>Term</th><th>Course</th><th>Outcome</th><th>Attainment</th><th>Target</th><th>Status</th></tr></thead><tbody>{% for row in recent %}<tr><td><span class="campus-badge {{ 'unassigned' if row.campus == 'Unassigned' }}">{{ 'Not recorded' if row.campus == 'Unassigned' else row.campus }}</span></td><td>{{ row.term_label }}</td><td><a href="{{ url_for('platform.assessment_edit', record_id=row.id) }}">{{ row.course_label }}</a></td><td>{{ row.outcome_label.split(':',1)[0] }}</td><td><strong>{{ row.attainment }}%</strong></td><td>{{ row.target }}%</td><td><span class="status {{ row.status }}">{{ row.status }}</span></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty-compact">No assessments yet.</div>{% endif %}
-</section>
+<header class="page-head"><div><p class="eyebrow">{{ program.commission }} assessment workspace</p><h1>{{ program.name }}</h1><p class="muted">Assessment and continuous improvement</p></div><div class="head-actions">
+{% if programs|length > 1 %}<form method="post" action="{{ url_for('platform.select_program') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Program<select name="program_id">{% for item in programs %}<option value="{{ item.id }}" {{ 'selected' if item.id == program.id }}>{{ item.name }}</option>{% endfor %}</select></label><button class="button secondary">Switch</button></form>{% endif %}
+<a class="button secondary" href="{{ url_for('platform.evaluator') }}">Open evaluator view ↗</a>{% if g.membership.role != 'reviewer' %}<a class="button primary" href="{{ url_for('platform.assessment_new') }}">Enter assessment</a>{% endif %}</div></header>
+{{ scope(overview) }}
+<section class="finding-banner"><h2>Assessment summary</h2></section>
+<section class="metrics" aria-label="Evidence summary"><article><span>Approved measures</span><strong>{{ overview.count }}</strong><small>{{ overview.direct_count }} direct · {{ overview.indirect_count }} indirect</small></article><article><span>Outcome means at target</span><strong>{{ overview.means_met }}<em>/ {{ overview.covered_outcomes }}</em></strong><small>Outcome means vs mean configured targets</small></article><article><span>Measures meeting target</span><strong>{{ metrics.met_rate }}%</strong><small>{{ metrics.met }} of {{ metrics.approved }} approved measures</small></article><article><span>Awaiting review</span><strong>{{ metrics.submitted }}</strong><small>{{ metrics.draft }} drafts / returned records</small></article></section>
+<div class="section-heading"><div><p class="eyebrow">Assessment</p><h2>Student outcomes</h2></div><a href="{{ url_for('platform.analytics') }}">Explore analysis →</a></div>
+{{ outcome_cards(overview) }}
+{% if continuous_improvement_story %}<section class="section-block"><div class="section-heading"><div><p class="eyebrow">Documented faculty response</p><h2>Improvement cases</h2><p class="muted">Submitted 2026 narrative · historical case studies, separate from live record totals.</p></div><a href="{{ url_for('platform.actions') }}">All improvement cases →</a></div><div class="case-grid">{% for case in continuous_improvement_story.cases[:2] %}{{ case_card(case) }}{% endfor %}</div></section>{% endif %}
+<div class="split section-block"><section class="panel"><div class="section-heading"><h2>Follow-up actions</h2><a href="{{ url_for('platform.actions') }}">Open register →</a></div>{% for action in actions %}<article class="followup-row"><span class="signal watch">{{ action.status.replace('_',' ') }}</span><strong>{{ action.title }}</strong><small>{{ action.owner_name or 'Owner not assigned' }} · {{ action.due_on or 'No due date' }}</small></article>{% else %}<p class="empty-compact">No open entries in the live action register. This does not mean every improvement loop is closed; consult the documented cases and next-cycle decisions.</p>{% endfor %}</section>
+<section class="panel"><h2>Recent assessment records</h2><div class="table-wrap"><table><thead><tr><th>Course / term</th><th>Campus</th><th>Attainment</th><th>Status</th></tr></thead><tbody>{% for row in recent[:5] %}<tr><td><a href="{{ url_for('platform.evidence_record', record_id=row.id) if row.status == 'approved' else url_for('platform.assessment_edit', record_id=row.id) }}">{{ row.course_code }}</a><small class="block">{{ row.term_label }} · {{ row.outcome_code }}</small></td><td>{{ row.campus }}</td><td>{{ row.attainment|round(1) }}%</td><td><span class="status {{ row.status }}">{{ row.status }}</span></td></tr>{% else %}<tr><td colspan="4">No records yet.</td></tr>{% endfor %}</tbody></table></div><a class="card-link" href="{{ url_for('platform.assessments') }}">View all assessment records →</a></section></div>
 {% endblock %}

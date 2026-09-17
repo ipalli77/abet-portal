@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import base64
 import io
 import json
 import math
@@ -25,6 +26,7 @@ from flask import (
     render_template,
     request,
     send_from_directory,
+    send_file,
     session,
     url_for,
 )
@@ -33,6 +35,11 @@ from werkzeug.utils import secure_filename
 
 from .analysis_engine import analyze_rows, generate_charts
 from .analytics import aggregate, summarize_records
+from .chart_cache import render_scoped_charts
+from .presentation import (
+    ANALYSIS_VIEWS, VIEW_CHARTS, SOURCE_FILES, evidence_overview,
+    enrich_story, matched_campus_comparison, paginate_records,
+)
 from .db import get_db
 from .security import (
     audit,
@@ -68,8 +75,71 @@ def _continuous_improvement_story_for_manager() -> dict | None:
         current_app.config.get("EDITION") == "utrgv_mece"
         and g.membership["role"] in MANAGER_ROLES
     ):
-        return get_utrgv_continuous_improvement_story()
+        return enrich_story(get_utrgv_continuous_improvement_story())
     return None
+
+
+def _view_url(endpoint=None, **updates):
+    """Keep repeated course/campus filters across links; never persist authority."""
+    pairs = [(key, value) for key in request.args for value in request.args.getlist(key)
+             if key not in updates]
+    for key, value in updates.items():
+        if value is not None and value != "":
+            pairs.extend((key, item) for item in value) if isinstance(value, (list, tuple)) else pairs.append((key, value))
+    base = url_for(endpoint or request.endpoint)
+    return base + ("?" + urlencode(pairs) if pairs else "")
+
+
+@bp.app_context_processor
+def presentation_helpers():
+    def chart_url(name, format=None):
+        endpoint = "platform.chart_download" if format else "platform.chart_detail"
+        pairs = [(key, value) for key in request.args for value in request.args.getlist(key)
+                 if key not in {"page", "q", "format"}]
+        if format:
+            pairs.append(("format", format))
+        base = url_for(endpoint, chart_name=name)
+        return base + ("?" + urlencode(pairs) if pairs else "")
+    return {"view_url": _view_url, "chart_url": chart_url}
+
+
+def _approved_where():
+    return " AND ar.status='approved'" + (
+        " AND ar.campus IN ('Edinburg','Brownsville')"
+        if current_app.config.get("EDITION") == "utrgv_mece" else "")
+
+
+def _overview(records, program_id, *, approved_only=True, outcome_id=None):
+    outcomes = _load_dimensions(program_id)["outcomes"]
+    if outcome_id is not None:
+        outcomes = [outcome for outcome in outcomes if outcome["id"] == outcome_id]
+    return evidence_overview(records, outcomes,
+                             restricted=_faculty_course_ids(program_id) is not None,
+                             approved_only=approved_only)
+
+
+def _source_catalog(story):
+    if not story:
+        return []
+    root = Path(current_app.root_path) / "source_documents"
+    return [{**source, "available": (root / source["document"]).is_file()}
+            for source in story["sources"]]
+
+
+def _record_evidence(program_id, record_ids):
+    """Only attachments of the freshly authorized selected records can appear."""
+    permitted = set(record_ids)
+    return [dict(row) for row in get_db().execute(
+        "SELECT * FROM evidence_items WHERE program_id=? AND organization_id=? ORDER BY created_at DESC",
+        (program_id, session["organization_id"])) if row["assessment_id"] in permitted]
+
+
+def _program_evidence(program_id):
+    if g.membership["role"] not in MANAGER_ROLES:
+        return []
+    return get_db().execute(
+        "SELECT * FROM evidence_items WHERE program_id=? AND organization_id=? AND assessment_id IS NULL ORDER BY created_at DESC",
+        (program_id, session["organization_id"])).fetchall()
 
 STANDARD_OUTCOMES = [
     ("1", "Identify, formulate, and solve complex engineering problems by applying principles of engineering, science, and mathematics."),
@@ -871,7 +941,19 @@ def _analysis_filter_context(
     if evidence_scope == "approved":
         where_parts.append("ar.status='approved'")
 
+    selection_labels = [
+        "Courses: " + (", ".join(course["code"] for course in dimensions["courses"]
+                                if course["id"] in selected_course_ids)
+                       if raw_course_ids else "all authorized")
+    ]
+    for key, label in (("outcome_id", "Outcome"), ("indicator_id", "PI")):
+        if key in selected_rows:
+            selection_labels.append(f"{label}: {selected_rows[key]['code']}")
+    if method:
+        selection_labels.append(f"Method: {method}")
+
     return {
+        "selection_labels": selection_labels,
         "dimensions": dimensions,
         "selected_course_ids": selected_course_ids,
         "selected_dimensions": selected_dimensions,
@@ -1232,7 +1314,9 @@ def dashboard():
         (g.user["id"], session["organization_id"], g.membership["role"]),
     ).fetchall()
     records = list(_record_query(program["id"]))
-    metrics = summarize_records(records)
+    display_records = [r for r in records if current_app.config.get("EDITION") != "utrgv_mece"
+                       or r["campus"] in UTRGV_CAMPUSES]
+    metrics = summarize_records(display_records)
     outcome_summary = aggregate(records, "outcome") if records else []
     action_scope, action_scope_params = _faculty_record_scope_sql(
         program["id"], "action_record.course_id", "action_record.campus"
@@ -1253,6 +1337,8 @@ def dashboard():
     return render_template(
         "dashboard.html", program=program, programs=programs, metrics=metrics,
         outcome_summary=outcome_summary, recent=records[:8], actions=actions,
+        overview=_overview(display_records, program["id"]),
+        continuous_improvement_story=_continuous_improvement_story_for_manager(),
     )
 
 
@@ -2141,16 +2227,18 @@ def evidence_download(evidence_id: int):
     program = require_program()
     item = get_db().execute(
         """SELECT e.*,ar.course_id,ar.campus FROM evidence_items e
-           JOIN assessment_records ar
+           LEFT JOIN assessment_records ar
              ON ar.id=e.assessment_id AND ar.program_id=e.program_id
            WHERE e.id=? AND e.organization_id=? AND e.program_id=?""",
         (evidence_id, session["organization_id"], program["id"]),
     ).fetchone()
     if not item or not item["storage_key"]:
         abort(404)
-    _require_current_record_access(
-        program["id"], item["course_id"], item["campus"]
-    )
+    if item["assessment_id"] is None:
+        if g.membership["role"] not in MANAGER_ROLES:
+            abort(404)
+    else:
+        _require_current_record_access(program["id"], item["course_id"], item["campus"])
     path = Path(current_app.config["UPLOAD_FOLDER"]) / item["storage_key"]
     return send_from_directory(path.parent, path.name, as_attachment=True, download_name=item["original_filename"])
 
@@ -2278,11 +2366,11 @@ def analytics():
         _record_query(program["id"], filters["where"], filters["params"])
     )
     analysis = analyze_rows(records, campus_group=filters["comparison_group"])
-    charts = (
-        generate_charts(records, campus_group=filters["comparison_group"])
-        if records
-        else {}
-    )
+    active_view = request.args.get("view", "summary")
+    if active_view not in VIEW_CHARTS:
+        abort(400, "Unknown analysis view.")
+    charts = render_scoped_charts(records, VIEW_CHARTS[active_view], generate_charts,
+                                 campus_group=filters["comparison_group"])
     if current_app.config.get("EDITION") != "utrgv_mece":
         charts.pop("campus_comparison", None)
     export_pairs = [
@@ -2313,6 +2401,11 @@ def analytics():
         scope_metrics=_analysis_scope_metrics(records),
         by_outcome=aggregate(records, "outcome") if records else [],
         by_course=aggregate(records, "course") if records else [],
+        active_view=active_view, analysis_views=ANALYSIS_VIEWS,
+        selection_labels=filters["selection_labels"],
+        overview=_overview(records, program["id"], outcome_id=filters["selected_dimensions"]["outcome_id"], approved_only=filters["evidence_scope"] == "approved"),
+        matched=matched_campus_comparison(records),
+        pagination=paginate_records(records, request.args.get("q", ""), request.args.get("page", 1, type=int)),
         selected_course_ids=filters["selected_course_ids"],
         selected_campuses=filters["selected_campuses"],
         comparison_group=filters["comparison_group"],
@@ -2326,11 +2419,149 @@ def analytics():
     )
 
 
+@bp.get("/review")
+@login_required
+def evaluator():
+    program = require_program()
+    filters = _analysis_filter_context(program["id"])
+    if filters["evidence_scope"] != "approved":
+        abort(400, "Evaluator view contains approved evidence only.")
+    records = list(_record_query(program["id"], filters["where"], filters["params"]))
+    story = _continuous_improvement_story_for_manager()
+    return render_template("evaluator.html", program=program, records=records,
+                           selection_labels=filters["selection_labels"],
+                           overview=_overview(records, program["id"], outcome_id=filters["selected_dimensions"]["outcome_id"]),
+                           continuous_improvement_story=story, evaluator_mode=True,
+                           sources=_source_catalog(story),
+                           terms=filters["dimensions"]["terms"], campuses=filters["available_campuses"],
+                           campus_analysis=analyze_rows(records, campus_group="outcome"),
+                           matched=matched_campus_comparison(records))
+
+
+@bp.get("/review/cases/<slug>")
+@login_required
+def improvement_case(slug):
+    program = require_program()
+    story = _continuous_improvement_story_for_manager()
+    if not story:
+        abort(403)
+    case = next((c for c in story["cases"] if c["slug"] == slug), None)
+    if not case:
+        abort(404)
+    return render_template("improvement_case.html", program=program, story=story,
+                           case=case, evaluator_mode=True)
+
+
+@bp.get("/review/records/<int:record_id>")
+@login_required
+def evidence_record(record_id):
+    program = require_program()
+    records = _record_query(program["id"], _approved_where() + " AND ar.id=?", (record_id,))
+    if not records:
+        abort(404)
+    return render_template("evidence_record.html", program=program, record=records[0],
+                           evidence=_record_evidence(program["id"], [record_id]), evaluator_mode=True)
+
+
+@bp.get("/evidence-library")
+@login_required
+def evidence_library():
+    program = require_program()
+    filters = _analysis_filter_context(program["id"])
+    if filters["evidence_scope"] != "approved":
+        abort(400, "The evidence library contains approved evidence only.")
+    records = list(_record_query(program["id"], filters["where"], filters["params"]))
+    story = _continuous_improvement_story_for_manager()
+    attachments = _record_evidence(program["id"], [r["id"] for r in records])
+    query = request.args.get("q", "").strip()[:200]
+    if query:
+        attachments = [item for item in attachments if query.casefold() in
+                       (str(item["title"]) + " " + str(item["description"] or "")).casefold()]
+    page = max(1, request.args.get("page", 1, type=int))
+    pages = max(1, (len(attachments) + 19) // 20)
+    page = min(page, pages)
+    return render_template("evidence_library.html", program=program,
+                           selection_labels=filters["selection_labels"],
+                           sources=_source_catalog(story), evaluator_mode=True,
+                           attachments=attachments[(page-1)*20:page*20],
+                           program_evidence=_program_evidence(program["id"]),
+                           attachment_count=len(attachments), query=query, page=page, pages=pages,
+                           record_lookup={r["id"]: r for r in records},
+                           overview=_overview(records, program["id"], outcome_id=filters["selected_dimensions"]["outcome_id"]))
+
+
+@bp.get("/review/sources/<source_id>")
+@login_required
+def source_document(source_id):
+    require_program()
+    if not _continuous_improvement_story_for_manager():
+        abort(403)
+    filename = SOURCE_FILES.get(source_id)
+    if not filename:
+        abort(404)
+    path = Path(current_app.root_path) / "source_documents" / filename
+    if not path.is_file():
+        abort(404, "This source document has not been installed on the server.")
+    return send_file(path, as_attachment=path.suffix != ".pdf", download_name=filename)
+
+
+@bp.get("/analytics/charts/<chart_name>/download")
+@login_required
+def chart_download(chart_name):
+    program = require_program()
+    if chart_name not in {name for names in VIEW_CHARTS.values() for name in names}:
+        abort(404)
+    output_format = request.args.get("format", "png")
+    if output_format not in {"png", "svg", "pdf"}:
+        abort(400, "Choose PNG, SVG, or PDF.")
+    filters = _analysis_filter_context(program["id"])
+    records = list(_record_query(program["id"], filters["where"], filters["params"]))
+    evidence_period = _overview(records, program["id"], outcome_id=filters["selected_dimensions"]["outcome_id"], approved_only=filters["evidence_scope"] == "approved")["period"]
+    export_caption = (
+        ("PREVIEW — INCLUDES UNAPPROVED EVIDENCE. " if filters["evidence_scope"] == "all" else "Approved evidence. ")
+        + f"{program['name']} | {evidence_period} | "
+        + " | ".join(filters["selection_labels"]) + " | "
+        + ", ".join(sorted({r["course_code"] for r in records})) + " | "
+        + ", ".join(sorted({r["campus"] for r in records}))
+        + f" | {len(records)} assessment measures; equal measure weighting. "
+        + "Configured targets are program-defined. Fitted trends are descriptive, not causal."
+    )
+    charts = render_scoped_charts(records, (chart_name,), generate_charts,
+                                 campus_group=filters["comparison_group"],
+                                 output_format=output_format, dpi=300, export_caption=export_caption)
+    chart = charts.get(chart_name)
+    if not chart or not chart["available"]:
+        abort(404, "Insufficient evidence for this chart.")
+    content = base64.b64decode(chart["data_uri"].split(",", 1)[1])
+    return send_file(io.BytesIO(content), mimetype={"png": "image/png", "svg": "image/svg+xml", "pdf": "application/pdf"}[output_format],
+                     as_attachment=True, download_name=f"{program['code']}-{chart_name}-{filters['evidence_scope']}.{output_format}")
+
+
+@bp.get("/analytics/charts/<chart_name>")
+@login_required
+def chart_detail(chart_name):
+    program = require_program()
+    if chart_name not in {name for names in VIEW_CHARTS.values() for name in names}:
+        abort(404)
+    filters = _analysis_filter_context(program["id"])
+    records = list(_record_query(program["id"], filters["where"], filters["params"]))
+    charts = render_scoped_charts(records, (chart_name,), generate_charts,
+                                 campus_group=filters["comparison_group"])
+    return render_template("chart_detail.html", program=program, chart=charts.get(chart_name),
+                           selection_labels=filters["selection_labels"],
+                           chart_name=chart_name, overview=_overview(records, program["id"], outcome_id=filters["selected_dimensions"]["outcome_id"],
+                               approved_only=filters["evidence_scope"] == "approved"),
+                           evidence_scope=filters["evidence_scope"])
+
+
 @bp.route("/report")
 @login_required
 def report():
     program = require_program()
-    report_where = " AND ar.status='approved'"
+    filters = _analysis_filter_context(program["id"])
+    if filters["evidence_scope"] != "approved":
+        abort(400, "Accreditation reports contain approved evidence only.")
+    report_where = filters["where"]
     unresolved_campus_count = 0
     if current_app.config.get("EDITION") == "utrgv_mece":
         unresolved_scope, unresolved_scope_params = _faculty_record_scope_sql(
@@ -2343,10 +2574,11 @@ def report():
             (program["id"], *unresolved_scope_params),
         ).fetchone()[0]
         report_where += " AND ar.campus IN ('Edinburg','Brownsville')"
-    records = list(_record_query(program["id"], report_where))
+    records = list(_record_query(program["id"], report_where, filters["params"]))
     outcomes = aggregate(records, "outcome") if records else []
     report_analysis = analyze_rows(records, campus_group="outcome")
-    report_charts = generate_charts(records, campus_group="outcome") if records else {}
+    report_charts = render_scoped_charts(records, ("campus_comparison", "trend_line"),
+                                        generate_charts, campus_group="outcome")
     action_scope, action_scope_params = _faculty_record_scope_sql(
         program["id"], "action_record.course_id", "action_record.campus"
     )
@@ -2396,6 +2628,11 @@ def report():
         ).fetchall()
     return render_template(
         "report.html",
+        selection_labels=filters["selection_labels"],
+        overview=_overview(records, program["id"], outcome_id=filters["selected_dimensions"]["outcome_id"]),
+        matched=matched_campus_comparison(records),
+        scoped_evidence=_record_evidence(program["id"], [r["id"] for r in records]),
+        program_evidence=_program_evidence(program["id"]),
         program=program,
         records=records,
         outcomes=outcomes,

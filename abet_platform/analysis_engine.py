@@ -12,6 +12,8 @@ import hashlib
 import io
 import math
 import re
+import textwrap
+from contextvars import ContextVar
 from collections import Counter, defaultdict
 from statistics import median, stdev
 from typing import Any, Iterable
@@ -23,6 +25,7 @@ from scipy import stats
 BLOOM_ORDER = ("Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create")
 _BLOOM_RANK = {level: index for index, level in enumerate(BLOOM_ORDER)}
 _COLORS = ("#003638", "#ee7f2f", "#00736f", "#7c4d8f", "#b94747", "#3f6f9f")
+_RENDER_SETTINGS = ContextVar("chart_render_settings", default=("png", 150, ""))
 CAMPUS_ORDER = ("Edinburg", "Brownsville")
 CAMPUS_STYLES = {
     "Edinburg": {"color": "#003638", "marker": "o", "linestyle": "-"},
@@ -893,7 +896,11 @@ def _chart(
     buffer = io.BytesIO()
     try:
         figure.tight_layout(rect=layout_rect)
-        figure.savefig(buffer, format="png", dpi=125, bbox_inches="tight", facecolor="white")
+        output_format, dpi, export_caption = _RENDER_SETTINGS.get()
+        if export_caption:
+            figure.text(0.01, -0.035, textwrap.fill(export_caption, width=max(55, int(figure.get_figwidth()*12))),
+                        ha="left", va="top", fontsize=9, color="#435b58")
+        figure.savefig(buffer, format=output_format, dpi=dpi, bbox_inches="tight", facecolor="white")
         encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
     finally:
         pyplot.close(figure)
@@ -904,8 +911,8 @@ def _chart(
         "chart_type": chart_type,
         "insights": insights or [],
         "metadata": metadata,
-        "png_base64": encoded,
-        "data_uri": f"data:image/png;base64,{encoded}",
+        "png_base64": encoded if output_format == "png" else None,
+        "data_uri": f"data:{ {'png': 'image/png', 'svg': 'image/svg+xml', 'pdf': 'application/pdf'}[output_format] };base64,{encoded}",
         "alt_text": alt_text,
         "reason": None,
     }
@@ -2646,8 +2653,12 @@ def generate_charts(
     approved_only: bool = False,
     statuses: Iterable[str] | None = None,
     campus_group: str = "term",
+    chart_names: Iterable[str] | None = None,
+    output_format: str = "png",
+    dpi: int = 150,
+    export_caption: str = "",
 ) -> dict[str, dict[str, Any]]:
-    """Render PNG data URIs plus text alternatives for the selected evidence."""
+    """Render only requested charts; downloads can use vector or 300-dpi output."""
     import matplotlib
 
     matplotlib.use("Agg", force=True)
@@ -2660,12 +2671,17 @@ def generate_charts(
         statuses=statuses,
         campus_group=campus_group,
     )
-    return {
-        "course_attainment": _course_chart(analysis, pyplot),
-        "semester_course": _semester_course_chart(analysis, pyplot),
-        "campus_comparison": _campus_comparison_chart(analysis, pyplot),
-        "semester_indicator": _indicator_chart(analysis, pyplot),
-        "bloom_boxplot": _bloom_chart(analysis, pyplot),
-        "trend_line": _trend_chart(analysis, pyplot),
-        "course_outcome_heatmap": _heatmap_chart(analysis, pyplot),
+    renderers = {
+        "course_attainment": _course_chart, "semester_course": _semester_course_chart,
+        "campus_comparison": _campus_comparison_chart, "semester_indicator": _indicator_chart,
+        "bloom_boxplot": _bloom_chart, "trend_line": _trend_chart,
+        "course_outcome_heatmap": _heatmap_chart,
     }
+    names = list(renderers) if chart_names is None else list(dict.fromkeys(chart_names))
+    if set(names) - set(renderers) or output_format not in {"png", "svg", "pdf"}:
+        raise ValueError("Unknown chart or export format.")
+    token = _RENDER_SETTINGS.set((output_format, dpi, export_caption))
+    try:
+        return {name: renderers[name](analysis, pyplot) for name in names}
+    finally:
+        _RENDER_SETTINGS.reset(token)

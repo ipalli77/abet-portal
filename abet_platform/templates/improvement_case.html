@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% from 'presentation.html' import case_chart, source_links with context %}
+{% block title %}{{ case.outcome }} · Evidence story{% endblock %}
+{% block content %}
+<a class="back-link no-print" href="{{ url_for('platform.actions') }}">← All improvement cases</a>
+<header class="page-head"><div><p class="eyebrow">{{ case.outcome }}</p><h1>{{ case.display_title }}</h1><p class="muted">{{ case.scope }}</p></div><button class="button secondary no-print" type="button" data-print>Print this case</button></header>
+<span class="signal {{ case.status_key }}">{{ case.display_status }}</span>
+<section class="finding-banner"><h2>Assessment results</h2><p>{{ case.conclusion }}</p></section>
+<section class="panel">{{ case_chart(case) }}<p class="snapshot-label">Values transcribed from the submitted 2026 Criterion 4 narrative, not recalculated from live records. Different measures are explicitly labeled; before/after observations do not establish causation.</p></section>
+<div class="evidence-chain">{% for stage in case.chain %}<article><span class="chain-number">{{ '%02d'|format(loop.index) }}</span><div><p class="eyebrow">{{ stage.stage }}</p><h2>{{ stage.title }}</h2><p>{{ stage.text }}</p>{% if stage['items'] %}<ul>{% for item in stage['items'] %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}</div></article>{% endfor %}</div>
+<section class="panel decision-panel"><h2>Department decision</h2><p>{{ case.decision }}</p><p><strong>Next-cycle monitoring:</strong> {{ case.next_step }}</p></section>
+<details class="panel"><summary>Exact values and interpretation</summary><div class="table-wrap"><table><thead><tr><th>Period</th><th>Measure</th><th>Value</th><th>Target</th><th>Interpretation</th></tr></thead><tbody>{% for item in case.metrics %}<tr><td>{{ item.period }}</td><td>{{ item.measure }}</td><td>{{ item.value }}</td><td>{{ item.target }}</td><td>{{ item.interpretation }}</td></tr>{% endfor %}</tbody></table></div></details>
+<section class="panel"><p class="eyebrow">Verify this conclusion</p><h2>Source documents</h2>{{ source_links(case.sources) }}<p class="analysis-caveat">{{ story.evidence_note }} PDF links open the source; printed section/page references are retained where physical PDF pagination differs.</p></section>
+{% endblock %}

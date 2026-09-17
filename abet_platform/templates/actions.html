@@ -1,12 +1,13 @@
 {% extends 'base.html' %}
+{% from 'presentation.html' import case_card, source_links with context %}
 {% block title %}Improvement · {{ program.name }}{% endblock %}
 {% block content %}
 {% set has_continuous_improvement_story = continuous_improvement_story is defined and continuous_improvement_story %}
 <div class="page-head ci-page-head">
   <div>
-    <p class="eyebrow">Continuous improvement</p>
-    <h1>Close the loop</h1>
-    <p class="muted">Turn findings into owned actions, document implementation, and verify impact in the next cycle.</p>
+    <p class="eyebrow">Criterion 4</p>
+    <h1>Continuous improvement</h1>
+    <p class="muted">Faculty actions and reassessment results.</p>
   </div>
   {% if has_continuous_improvement_story %}
     <div class="head-actions no-print">
@@ -17,6 +18,10 @@
 
 {% if has_continuous_improvement_story %}
   {% set story = continuous_improvement_story %}
+  <p class="snapshot-label">Historical case studies from the submitted 2026 Criterion 4 narrative · {{ story.methodology.cutoff }}. Live assessment changes do not automatically change these documented decisions.</p>
+  <div class="review-journey" aria-label="Improvement evidence chain"><span><b>01</b> Finding</span><span><b>02</b> Faculty action</span><span><b>03</b> Reassessment</span><span><b>04</b> Next decision</span></div>
+  <div class="case-grid">{% for case in story.cases %}{{ case_card(case) }}{% endfor %}</div>
+  <details class="panel section-block narrative-reference"><summary>Full submitted narrative, proposed vs implemented actions, and next-cycle plan</summary>
   <article class="ci-story" aria-labelledby="ci-story-title">
     <header class="ci-hero">
       <div>
@@ -43,7 +48,7 @@
       <div class="panel-head">
         <div>
           <p class="eyebrow">Interpretation guide</p>
-          <h2 id="ci-methodology-title">How the evidence was evaluated</h2>
+          <h2 id="ci-methodology-title">Evaluation method</h2>
         </div>
       </div>
       <dl>
@@ -59,7 +64,7 @@
       <div class="panel-head">
         <div>
           <p class="eyebrow">Closed-loop process</p>
-          <h2 id="ci-loop-title">From assessment evidence to the next decision</h2>
+          <h2 id="ci-loop-title">Improvement process</h2>
         </div>
       </div>
       <ol class="ci-loop-steps">
@@ -75,7 +80,7 @@
     <section class="ci-case-section" aria-labelledby="ci-cases-title">
       <div class="ci-section-heading">
         <p class="eyebrow">Outcome evidence chains</p>
-        <h2 id="ci-cases-title">How evidence became action and a next decision</h2>
+        <h2 id="ci-cases-title">Improvement cases</h2>
         <p>Each case separates the original finding, the intervention that was actually implemented, the documented follow-up evidence, and the resulting decision.</p>
       </div>
       <div class="ci-case-list">
@@ -150,7 +155,7 @@
                 <strong>Case evidence:</strong>
                 <ul>
                   {% for source in case.sources %}
-                    <li><cite>{{ source.document }}</cite>{% if source.reference %}, {{ source.reference }}{% endif %}</li>
+                    <li><a href="{{ url_for('platform.source_document', source_id=source.source_id) }}" target="_blank" rel="noopener"><cite>{{ source.document }}</cite></a>{% if source.reference %}, {{ source.reference }}{% endif %}</li>
                   {% endfor %}
                 </ul>
               </footer>
@@ -165,7 +170,7 @@
         <div class="panel-head">
           <div>
             <p class="eyebrow">Implementation record</p>
-            <h2 id="ci-comparison-title">Proposed versus actually implemented</h2>
+            <h2 id="ci-comparison-title">Proposed and implemented actions</h2>
             <p>The implemented column records departmental action; it is intentionally distinct from the original proposal.</p>
           </div>
         </div>
@@ -201,7 +206,7 @@
 
     {% if story.monitoring %}
       <section class="panel ci-monitoring" aria-labelledby="ci-monitoring-title">
-        <div class="panel-head"><div><p class="eyebrow">Forward plan</p><h2 id="ci-monitoring-title">Decisions carried into the next assessment cycle</h2></div></div>
+        <div class="panel-head"><div><p class="eyebrow">Forward plan</p><h2 id="ci-monitoring-title">Next-cycle decisions</h2></div></div>
         <div class="table-wrap">
           <table>
             <caption>Outcome-level monitoring status and next-cycle decision</caption>
@@ -217,12 +222,13 @@
         <div class="panel-head"><div><p class="eyebrow">Document trail</p><h2 id="ci-sources-title">Criterion 4 evidence sources</h2></div></div>
         <ol>
           {% for source in story.sources %}
-            <li><cite>{{ source.document }}</cite><span>{{ source.role }}</span>{% if source.references %}<small>{{ source.references }}</small>{% endif %}</li>
+            <li><a href="{{ url_for('platform.source_document', source_id=source.source_id) }}" target="_blank" rel="noopener"><cite>{{ source.document }}</cite></a><span>{{ source.role }}</span>{% if source.references %}<small>{{ source.references }}</small>{% endif %}</li>
           {% endfor %}
         </ol>
       </section>
     {% endif %}
   </article>
+  </details>
 {% endif %}
 
 <div class="{{ 'split asymmetric ci-action-workspace' if g.membership.role in ('owner','admin','coordinator') }}">
@@ -259,7 +265,7 @@
   {% if g.membership.role in ('owner','admin','coordinator') %}
     <aside class="panel no-print">
       <p class="eyebrow">Create action</p>
-      <h2>Plan a documented change</h2>
+      <h2>New improvement action</h2>
       <form method="post" class="stack">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label>Title<input name="title" required></label>

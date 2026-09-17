@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% from 'presentation.html' import scope, chart as render_chart with context %}
+{% block title %}Figure · {{ program.name }}{% endblock %}
+{% block content %}
+<a class="back-link" href="{{ view_url('platform.analytics', format=none) }}">← Back to analysis</a><header class="page-head"><div><p class="eyebrow">Expanded figure</p><h1>{{ chart.title if chart else 'Chart unavailable' }}</h1></div></header>{{ scope(overview, 'PREVIEW · not official' if evidence_scope == 'all' else 'Approved evidence') }}{% if evidence_scope == 'all' %}<p class="flash error">This figure includes unapproved evidence. Do not use it as an official accreditation finding.</p>{% endif %}<section class="panel expanded-figure">{{ render_chart(chart, chart_name, overview.period) }}</section>
+{% endblock %}

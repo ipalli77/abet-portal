@@ -476,4 +476,25 @@ document.addEventListener("DOMContentLoaded", () => {
     button.addEventListener("click", () => courseBoxes.forEach((box) => { box.checked = false; }));
   });
   setupBulkApproval();
+  // Keep the interface responsive without turning presentation controls into
+  // authorization state. The server revalidates every selection and download.
+  document.querySelectorAll("form.analysis-filters, form.record-search").forEach((form) => {
+    const message = document.createElement("p");
+    message.dataset.loadingMessage = "";
+    message.setAttribute("role", "status");
+    message.textContent = "Preparing this evidence view…";
+    form.appendChild(message);
+    form.addEventListener("submit", (event) => {
+      if (event.defaultPrevented || !form.checkValidity()) return;
+      form.classList.add("is-loading");
+      form.setAttribute("aria-busy", "true");
+    });
+  });
+});
+
+window.addEventListener("pageshow", () => {
+  document.querySelectorAll(".is-loading").forEach((element) => {
+    element.classList.remove("is-loading");
+    element.removeAttribute("aria-busy");
+  });
 });

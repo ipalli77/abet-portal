@@ -103,7 +103,7 @@ def create_app(test_config: dict | None = None) -> Flask:
             "frame-ancestors 'self'",
         )
         if getattr(g, "user", None):
-            response.headers.setdefault("Cache-Control", "no-store")
+            response.headers["Cache-Control"] = "no-store"
         return response
 
     @app.errorhandler(400)

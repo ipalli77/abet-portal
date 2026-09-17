@@ -1,0 +1,72 @@
+{% set term_options=terms %}{% set course_options=courses %}{% set outcome_options=outcomes %}{% set indicator_options=indicators %}
+{% set analysis_course_campus_scoped=allowed_campuses_by_course is defined and allowed_campuses_by_course is not none %}
+<details class="panel filter-panel no-print" id="analysis-filters">
+<summary><span>Change evidence selection</span><small>Courses · campuses · terms · outcomes · method</small></summary>
+  <form method="get" class="analysis-filters"{% if analysis_course_campus_scoped %} data-analysis-course-campus-scoped{% endif %}>
+    <input type="hidden" name="view" value="{{ active_view }}">
+    <input type="hidden" name="course_selection" value="explicit">
+    <div class="filter-grid">
+      <label>Term
+        <select name="term_id">
+          <option value="">All terms</option>
+          {% for item in term_options %}<option value="{{ item.id }}" {{ 'selected' if request.args.get('term_id') == item.id|string }}>{{ item.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Outcome
+        <select name="outcome_id" id="analysis-outcome">
+          <option value="">All outcomes</option>
+          {% for item in outcome_options %}<option value="{{ item.id }}" {{ 'selected' if request.args.get('outcome_id') == item.id|string }}>{{ item.code }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Performance indicator
+        <select name="indicator_id">
+          <option value="">All indicators</option>
+          {% for item in indicator_options %}<option value="{{ item.id }}" data-outcome="{{ item.outcome_id }}" {{ 'selected' if request.args.get('indicator_id') == item.id|string }}>{{ item.code }} · {{ item.description|truncate(45) }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Method
+        <select name="method">
+          <option value="">Direct + indirect</option>
+          <option value="direct" {{ 'selected' if request.args.get('method') == 'direct' }}>Direct only</option>
+          <option value="indirect" {{ 'selected' if request.args.get('method') == 'indirect' }}>Indirect only</option>
+        </select>
+      </label>
+      <label>Evidence scope
+        <select name="evidence_scope">
+          <option value="approved" {{ 'selected' if evidence_scope == 'approved' }}>Approved evidence only</option>
+          <option value="all" {{ 'selected' if evidence_scope == 'all' }}>Preview all workflow states</option>
+        </select>
+      </label>
+      {% if config.EDITION == 'utrgv_mece' %}<label>Organize campus comparison by
+        <select name="comparison_group">
+          {% for value, label in (('term','Academic term'),('course','Course'),('outcome','Student outcome'),('indicator','Performance indicator')) %}<option value="{{ value }}" {{ 'selected' if comparison_group == value }}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>{% endif %}
+    </div>
+    {% if config.EDITION == 'utrgv_mece' %}<fieldset class="campus-picker">
+      <legend>Campus evidence to include</legend>
+      <input type="hidden" name="campus_selection" value="explicit">
+      <div class="campus-choice-grid">
+        {% for campus in campuses %}<label><input type="checkbox" name="campus" value="{{ campus }}" {{ 'checked' if campus in selected_campuses }}> <span><strong>{{ campus }}</strong><small>{{ campus }} campus assessment measures</small></span></label>{% endfor %}
+      </div>
+      <small>{% if analysis_course_campus_scoped %}Only campuses included in your approved course–campus access are shown. Select one or more to narrow the available courses.{% else %}Select both campuses to display the Edinburg–Brownsville comparison. Select one for a campus-specific analysis.{% endif %}</small>
+    </fieldset>{% endif %}
+    <fieldset class="course-picker">
+      <legend>Courses to compare</legend>
+      <div class="course-picker-actions">
+        <button type="button" class="link-button dark" data-course-select-all>Select all</button>
+        <button type="button" class="link-button dark" data-course-clear>Clear</button>
+        <small data-analysis-course-campus-help role="status" aria-live="polite">Select one or more of the courses you are authorized to view.</small>
+      </div>
+      <div class="course-choice-grid">
+        {% for item in course_options %}
+          <label><input type="checkbox" name="course_id" value="{{ item.id }}"{% if analysis_course_campus_scoped %} data-allowed-campuses="{{ allowed_campuses_by_course.get(item.id, [])|join('|') }}"{% endif %} {{ 'checked' if item.id in selected_course_ids }}> <span><strong>{{ item.code }}</strong><small>{{ item.name }}</small></span></label>
+        {% else %}
+          <p class="muted">No courses are assigned to this account.</p>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div class="filter-actions"><a class="button secondary" href="{{ url_for('platform.analytics') }}">Reset</a><button class="button primary">Run analysis</button></div>
+  </form>
+</details>
+
