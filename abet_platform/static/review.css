@@ -133,6 +133,9 @@ details.filter-panel form { padding:0 1.2rem 1.2rem; }
 .analysis-data ul { padding-left:1.3rem; font-size:.86rem; }.analysis-data li { margin:.5rem 0; }
 .analysis-caveat { border-left:3px solid #bd9764; background:#fcf8ef; color:#685b41; font-size:.83rem; line-height:1.6; }
 .statistics-grid { margin:1rem 0; }.statistic-card { background:#f7f9fa; box-shadow:none; }.statistic-value { font-family:inherit; font-weight:650; }
+.bloom-results { min-width:0; }
+.bloom-results .statistics-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+@media (max-width:900px) { .bloom-results .statistics-grid { grid-template-columns:1fr; } }
 .record-search { margin:1rem 0; }.record-search label { font-size:.83rem; }.record-search > div { display:flex; gap:.7rem; margin-top:.4rem; }.record-search input[type="search"] { flex:1; min-width:0; }
 .pagination { display:flex; justify-content:flex-end; align-items:center; gap:1rem; margin-top:1rem; font-size:.84rem; }
 .table-wrap { overflow:auto; }.table-wrap:focus { outline-offset:2px; }

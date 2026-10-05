@@ -1,6 +1,6 @@
   <section class="panel analysis-panel" aria-labelledby="bloom-heading">
     <div class="panel-head"><div><p class="eyebrow">Cognitive demand</p><h2 id="bloom-heading">Bloom-level analysis</h2><p>{% if config.EDITION == 'utrgv_mece' %}<strong>{{ analysis.methodology.campus_scope.label }}.</strong> {% endif %}The boxplot and table show attainment by Bloom level.</p></div></div>
-    <div class="analysis-grid">
+    <div class="bloom-results">
       <div>
         {{ chart(charts.get('bloom_boxplot'), 'bloom_boxplot', analysis.methodology.campus_scope.label) }}
 {{ explain_figure('bloom_boxplot', analysis, charts) }}
@@ -26,6 +26,15 @@
             {% endif %}
           </article>
           <article class="statistic-card">
+            <h3>Dunn’s pairwise test</h3>
+            {% if analysis.dunn_test.status == 'available' %}
+              <p class="statistic-value">{{ analysis.dunn_test.significant_count }} / {{ analysis.dunn_test.pair_count }} pairs</p>
+              <p>Adjusted p &lt; 0.05 after Holm correction across all selected Bloom-level pairs. Full results appear below.</p>
+            {% else %}
+              <p class="statistic-value">Not available</p><p>{{ analysis.dunn_test.reason }}</p>
+            {% endif %}
+          </article>
+          <article class="statistic-card">
             <h3>Cliff’s delta</h3>
             {% if analysis.cliffs_delta.delta is number %}
               <p class="statistic-value">Δ = {{ '%+.3f'|format(analysis.cliffs_delta.delta) }}</p>
@@ -35,6 +44,20 @@
             {% endif %}
           </article>
         </div>
+        {% if analysis.dunn_test.small_groups %}<p class="analysis-caveat">Fewer than five measures in {{ analysis.dunn_test.small_groups|join(', ') }}. Rank-test p-values are approximate and should be interpreted cautiously.</p>{% endif %}
+        <section aria-labelledby="dunn-heading">
+          <h3 id="dunn-heading">Bloom-level comparisons</h3>
+          <p>All pairs are shown, including when Kruskal–Wallis does not detect a difference. These are exploratory comparisons of assessment records, not independent students. {% if config.EDITION == 'utrgv_mece' %}Select one campus to analyze it separately; selecting both pools their records.{% endif %}</p>
+          {% if analysis.dunn_test.pairs %}
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Dunn and Cliff's delta pairwise results">
+            <table class="analysis-table">
+              <caption>Dunn’s two-sided test with tie correction and Holm-adjusted p-values. Positive Cliff’s Δ means the first listed level tends to have higher attainment. n counts measures.</caption>
+              <thead><tr><th scope="col">First / second level</th><th scope="col" class="number">n (first / second)</th><th scope="col" class="number">Dunn z</th><th scope="col" class="number">Raw p</th><th scope="col" class="number">Holm-adjusted p</th><th scope="col" class="number">Cliff’s Δ</th><th scope="col">Effect size</th><th scope="col">At α = 0.05</th></tr></thead>
+              <tbody>{% for pair in analysis.dunn_test.pairs %}<tr><th scope="row">{{ pair.first }} / {{ pair.second }}</th><td class="number">{{ pair.first_count }} / {{ pair.second_count }}</td><td class="number">{{ '%+.3f'|format(pair.z_statistic) if pair.z_statistic is number else '—' }}</td><td class="number">{{ p_value(pair.p_value) }}</td><td class="number">{{ p_value(pair.p_adjusted) }}</td><td class="number">{{ '%+.3f'|format(pair.delta) }}</td><td>{{ pair.magnitude|title }}</td><td>{{ 'Difference detected' if pair.significant else ('Not detected' if pair.significant is not none else 'Unavailable') }}</td></tr>{% endfor %}</tbody>
+            </table>
+          </div>
+          {% else %}<p>{{ analysis.dunn_test.reason }}</p>{% endif %}
+        </section>
         {{ explain_statistics(analysis) }}
       </div>
     </div>

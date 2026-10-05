@@ -434,12 +434,13 @@ def _indicator_bloom_summaries(rows: list[dict[str, Any]]) -> list[dict[str, Any
     )
 
 
-def _kruskal_wallis(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _bloom_groups(rows: list[dict[str, Any]]) -> list[tuple[str, list[float]]]:
+    """Use exactly the same nonblank groups for the plot and rank tests."""
     grouped: dict[str, list[float]] = defaultdict(list)
     for row in rows:
         if row["bloom_level"] != "Unspecified":
             grouped[row["bloom_level"]].append(float(row["attainment"]))
-    ordered = [
+    return [
         (level, grouped[level])
         for level in sorted(
             grouped,
@@ -447,12 +448,17 @@ def _kruskal_wallis(rows: list[dict[str, Any]]) -> dict[str, Any]:
         )
         if grouped[level]
     ]
+
+
+def _kruskal_wallis(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    ordered = _bloom_groups(rows)
     base = {
         "status": "unavailable",
         "h_statistic": None,
         "p_value": None,
         "group_count": len(ordered),
         "levels": [level for level, _ in ordered],
+        "small_groups": [level for level, values in ordered if len(values) < 5],
         "significant": None,
         "reason": None,
     }
@@ -483,6 +489,79 @@ def _kruskal_wallis(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _delta_values(left: list[float], right: list[float]) -> tuple[float, str]:
+    """Signed Cliff's delta, first group minus second; ties contribute zero.
+
+    Search sorted values rather than allocating a quadratic pair matrix.
+    """
+    ordered = np.sort(np.asarray(right, dtype=float))
+    wins = int(np.searchsorted(ordered, left, side="left").sum())
+    losses = int((len(right) - np.searchsorted(ordered, left, side="right")).sum())
+    delta = (wins - losses) / (len(left) * len(right))
+    absolute = abs(delta)
+    magnitude = (
+        "negligible" if absolute < 0.147 else
+        "small" if absolute < 0.33 else
+        "medium" if absolute < 0.474 else "large"
+    )
+    return float(delta), magnitude
+
+
+def _dunn_test(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Two-sided Dunn comparisons with pooled midranks, ties and Holm adjustment.
+
+    Variance: N(N+1)/12 - sum(t^3-t)/(12(N-1)), where t is a tie count.
+    Holm is applied to ALL selected Bloom-level pairs, not only small p-values.
+    Reference: Dunn (1964), Technometrics 6, 241–252; tie correction as in
+    scikit-posthocs posthoc_dunn (Glantz, 2012). No extra runtime dependency.
+    """
+    groups = _bloom_groups(rows)
+    result = {
+        "status": "unavailable", "reason": None, "adjustment": "Holm",
+        "pairs": [], "pair_count": 0, "significant_count": 0,
+        "small_groups": [level for level, values in groups if len(values) < 5],
+    }
+    if len(groups) < 2:
+        result["reason"] = "At least two populated Bloom levels are required."
+        return result
+    values = np.asarray([value for _, items in groups for value in items], dtype=float)
+    ranks = stats.rankdata(values, method="average")
+    n = len(values)
+    _, ties = np.unique(values, return_counts=True)
+    variance = n * (n + 1) / 12 - sum(int(t)**3 - int(t) for t in ties) / (12 * (n - 1))
+    mean_ranks = []
+    offset = 0
+    for _, items in groups:
+        mean_ranks.append(float(np.mean(ranks[offset:offset + len(items)])))
+        offset += len(items)
+    pairs = []
+    for i, (first, left) in enumerate(groups):
+        for j in range(i + 1, len(groups)):
+            second, right = groups[j]
+            delta, magnitude = _delta_values(left, right)
+            z = ((mean_ranks[i] - mean_ranks[j]) /
+                 math.sqrt(variance * (1 / len(left) + 1 / len(right)))) if variance > 0 else None
+            pairs.append({
+                "first": first, "second": second, "first_count": len(left),
+                "second_count": len(right), "z_statistic": z,
+                "p_value": float(2 * stats.norm.sf(abs(z))) if z is not None else None,
+                "p_adjusted": None, "significant": None,
+                "delta": delta, "magnitude": magnitude,
+            })
+    result.update(pairs=pairs, pair_count=len(pairs))
+    if variance <= 0:
+        result["reason"] = "All Bloom-level attainment values are identical; rank-test variance is zero."
+        return result  # Effect sizes remain meaningful (zero); p-values do not.
+    previous = 0.0
+    for position, pair in enumerate(sorted(pairs, key=lambda item: item["p_value"])):
+        adjusted = min(1.0, max(previous, (len(pairs) - position) * pair["p_value"]))
+        pair["p_adjusted"] = adjusted
+        pair["significant"] = adjusted < 0.05
+        previous = adjusted
+    result.update(status="available", significant_count=sum(pair["significant"] for pair in pairs))
+    return result
+
+
 def _cliffs_delta(rows: list[dict[str, Any]]) -> dict[str, Any]:
     analyze = [
         float(row["attainment"]) for row in rows if row["bloom_level"] == "Analyze"
@@ -503,18 +582,7 @@ def _cliffs_delta(rows: list[dict[str, Any]]) -> dict[str, Any]:
     if not analyze or not others:
         base["reason"] = "Analyze-level evidence and at least one other Bloom level are required."
         return base
-    left = np.asarray(analyze, dtype=float)[:, None]
-    right = np.asarray(others, dtype=float)[None, :]
-    delta = float((np.sum(left > right) - np.sum(left < right)) / left.size / right.size)
-    absolute = abs(delta)
-    if absolute < 0.147:
-        magnitude = "negligible"
-    elif absolute < 0.33:
-        magnitude = "small"
-    elif absolute < 0.474:
-        magnitude = "medium"
-    else:
-        magnitude = "large"
+    delta, magnitude = _delta_values(analyze, others)
     return {
         **base,
         "status": "available",
@@ -522,6 +590,15 @@ def _cliffs_delta(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "magnitude": magnitude,
         "reason": None,
     }
+
+
+def _slope_p_value(result, values: list[float] | np.ndarray) -> tuple[float | None, str | None]:
+    if len(values) < 3:
+        return None, "At least three observed terms are required for a slope p-value."
+    if len(set(values)) < 2:
+        return None, "Term means are constant; a slope significance test is not estimable."
+    value = _number(result.pvalue)
+    return value, None if value is not None else "The slope p-value could not be estimated."
 
 
 def _trend(rows: list[dict[str, Any]], terms: list[dict[str, Any]]) -> dict[str, Any]:
@@ -561,6 +638,7 @@ def _trend(rows: list[dict[str, Any]], terms: list[dict[str, Any]]) -> dict[str,
         x = np.arange(len(terms), dtype=float)
     y = np.asarray([float(item["mean"]) for item in terms], dtype=float)
     result = stats.linregress(x, y)
+    p_value, p_reason = _slope_p_value(result, y)
     slope = float(result.slope)
     standard_error = float(result.stderr) if result.stderr is not None else None
     if not math.isfinite(slope):
@@ -580,8 +658,9 @@ def _trend(rows: list[dict[str, Any]], terms: list[dict[str, Any]]) -> dict[str,
         "status": "available",
         "slope": slope,
         "intercept": float(result.intercept),
-        "r_squared": float(result.rvalue**2),
-        "p_value": float(result.pvalue),
+        "r_squared": _number(result.rvalue**2),
+        "p_value": p_value,
+        "p_value_reason": p_reason,
         "standard_error": standard_error,
         "confidence_interval_95": interval,
         "direction": direction,
@@ -699,14 +778,16 @@ def _longitudinal_campus_series(
                 np.asarray(observed_indices, dtype=float),
                 np.asarray(observed_values, dtype=float),
             )
+            p_value, p_reason = _slope_p_value(result, observed_values)
             if math.isfinite(float(result.slope)):
                 trend.update(
                     {
                         "status": "available",
                         "slope": float(result.slope),
                         "intercept": float(result.intercept),
-                        "r_squared": float(result.rvalue**2),
-                        "p_value": float(result.pvalue),
+                        "r_squared": _number(result.rvalue**2),
+                        "p_value": p_value,
+                        "p_value_reason": p_reason,
                         "direction": (
                             "stable"
                             if abs(float(result.slope)) < 1e-12
@@ -843,6 +924,7 @@ def analyze_rows(
         "campuses": campuses,
         "campus_comparison": _campus_comparison(data, campuses, campus_group),
         "kruskal_wallis": _kruskal_wallis(data),
+        "dunn_test": _dunn_test(data),
         "cliffs_delta": _cliffs_delta(data),
         # The pooled trend remains for backwards-compatible tables and API
         # consumers. Longitudinal charts use the campus-separated series.
@@ -1505,19 +1587,32 @@ def _campus_comparison_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]
     )
 
 
+def _format_p(value: Any) -> str:
+    value = _number(value)
+    if value is None:
+        return "p unavailable"
+    return "p < 0.0001" if value < 0.0001 else f"p = {value:.4f}"
+
+
+def _bloom_test_annotations(analysis: dict[str, Any]) -> list[str]:
+    kw, dunn, delta = (analysis[key] for key in ("kruskal_wallis", "dunn_test", "cliffs_delta"))
+    kw_text = (f"Kruskal–Wallis: H = {kw['h_statistic']:.3f} · {_format_p(kw['p_value'])}"
+               if kw["status"] == "available" else "Kruskal–Wallis: unavailable for this selection")
+    dunn_text = (f"Dunn–Holm: min adjusted {_format_p(min(pair['p_adjusted'] for pair in dunn['pairs']))}"
+                 f" · {dunn['significant_count']}/{dunn['pair_count']} pairs < 0.05"
+                 if dunn["status"] == "available" else "Dunn–Holm: unavailable for this selection")
+    delta_text = (f"Cliff’s Δ (Analyze vs others) = {delta['delta']:+.3f} · {delta['magnitude']} effect"
+                  if delta["status"] == "available" else "Cliff’s Δ (Analyze vs others): unavailable for this selection")
+    return [kw_text, dunn_text, delta_text]
+
+
 def _bloom_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
     title = "Bloom-level attainment distribution"
-    groups: dict[str, list[float]] = defaultdict(list)
-    for row in analysis["rows"]:
-        if row["bloom_level"] != "Unspecified":
-            groups[row["bloom_level"]].append(float(row["attainment"]))
-    levels = sorted(
-        groups,
-        key=lambda value: (_BLOOM_RANK.get(value, len(BLOOM_ORDER)), value),
-    )
+    groups = dict(_bloom_groups(analysis["rows"]))
+    levels = list(groups)
     if not levels:
         return _unavailable(title, "No records with a Bloom level are available in this selection.")
-    figure, axis = pyplot.subplots(figsize=(max(7.5, 1.08 * len(levels)), 5.1))
+    figure, axis = pyplot.subplots(figsize=(max(9.0, 1.08 * len(levels)), 6.0))
     boxplot_options = {
         "patch_artist": True,
         "showmeans": True,
@@ -1545,20 +1640,23 @@ def _bloom_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         box.set_alpha(0.72)
     mean_target = _mean([float(row["target"]) for row in analysis["rows"]])
     axis.axhline(mean_target, color="#b94747", linestyle="--", linewidth=1.2, label=f"Mean target {mean_target:.1f}%")
-    kw = analysis["kruskal_wallis"]
-    annotation = (
-        f"Kruskal–Wallis p = {kw['p_value']:.4f}"
-        if kw["status"] == "available"
-        else "Kruskal–Wallis not computable"
-    )
-    axis.text(0.99, 0.02, annotation, transform=axis.transAxes, ha="right", va="bottom", fontsize=8)
+    annotations = _bloom_test_annotations(analysis)
+    figure.text(0.085, 0.07, "\n".join(annotations), fontsize=11, linespacing=1.65,
+                va="bottom", color="#243f43",
+                bbox={"facecolor": "#f1f6f7", "edgecolor": "none", "pad": 8})
+    figure.text(0.085, 0.025, "Exploratory record-level tests · n = assessment measures, not students",
+                fontsize=9, color="#526368")
+    axis.set_xticks(range(1, len(levels) + 1), [f"{level}\n(n={len(groups[level])})" for level in levels])
+    axis.tick_params(labelsize=11)
     axis.set_ylim(0, 110)
     axis.set_ylabel("Attainment (%)")
     axis.set_title(title, loc="left", weight="bold")
     axis.grid(axis="y", alpha=0.2)
     axis.legend(loc="lower left", frameon=False)
     campus_scope = _campus_scope(analysis["rows"])
-    insights = []
+    insights = list(annotations)
+    if analysis["kruskal_wallis"]["small_groups"]:
+        insights.append("Fewer than five measures in: " + ", ".join(analysis["kruskal_wallis"]["small_groups"]) + ". Interpret rank-test p-values cautiously.")
     if campus_scope["mode"] == "combined":
         insights.append(
             "This pooled non-time Bloom distribution combines Edinburg and Brownsville evidence."
@@ -1567,15 +1665,17 @@ def _bloom_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         f"{level}: {len(groups[level])} measures, median {median(groups[level]):.1f}%"
         for level in levels
     )
-    if insights:
-        alt = f"{campus_scope['label']}. {alt}"
+    alt = f"{campus_scope['label']}. {alt}. " + " ".join(insights)
     return _chart(
         figure,
         title=title,
         alt_text=alt,
         pyplot=pyplot,
         insights=insights,
-        metadata={"campus_scope": campus_scope},
+        metadata={"campus_scope": campus_scope, "statistical_annotations": annotations,
+                  "kruskal_wallis": analysis["kruskal_wallis"], "dunn_test": analysis["dunn_test"],
+                  "cliffs_delta": analysis["cliffs_delta"]},
+        layout_rect=(0, 0.26, 1, 1),
     )
 
 
@@ -2523,7 +2623,7 @@ def _trend_chart_overall(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
     x = np.arange(len(terms), dtype=float)
     observed = [float(item["mean"]) for item in terms]
     fitted = [float(item["fitted"]) for item in terms]
-    figure, axis = pyplot.subplots(figsize=(8.5, 4.8))
+    figure, axis = pyplot.subplots(figsize=(9.0, 5.6))
     axis.scatter(x, observed, color="#ee7f2f", s=55, zorder=3, label="Observed term mean")
     axis.plot(x, observed, color="#ee7f2f", alpha=0.35, linewidth=1)
     axis.plot(x, fitted, color="#003638", linewidth=2.2, label="Linear trend")
@@ -2535,21 +2635,17 @@ def _trend_chart_overall(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
     axis.set_title(title, loc="left", weight="bold")
     axis.grid(axis="y", alpha=0.2)
     axis.legend(frameon=False)
-    axis.text(
-        0.99,
-        0.02,
-        f"slope {trend['slope']:+.2f} points / configured term unit; p = {trend['p_value']:.4f}",
-        transform=axis.transAxes,
-        ha="right",
-        va="bottom",
-        fontsize=8,
-    )
+    annotation = f"β = {trend['slope']:+.2f} pp / configured term unit · {_format_p(trend['p_value'])}"
+    figure.text(0.085, 0.08, annotation, fontsize=11, color="#003638",
+                bbox={"facecolor": "#f1f6f7", "edgecolor": "none", "pad": 8})
+    figure.text(0.085, 0.025, "β = fitted change · pp = percentage points · exploratory least-squares fit", fontsize=9)
     alt = (
         f"{trend['direction'].title()} linear trend across {len(terms)} terms with slope "
-        f"{trend['slope']:+.2f}; "
+        f"{trend['slope']:+.2f}; {annotation}. "
         + "; ".join(f"{item['label']} {item['mean']:.1f}%" for item in terms)
     )
-    return _chart(figure, title=title, alt_text=alt, pyplot=pyplot)
+    return _chart(figure, title=title, alt_text=alt, pyplot=pyplot,
+                  metadata={"statistical_annotations": [annotation]}, layout_rect=(0, 0.17, 1, 1))
 
 
 def _trend_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
@@ -2563,7 +2659,7 @@ def _trend_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
         return _unavailable(
             title, "No Edinburg or Brownsville term evidence is available."
         )
-    figure, axis = pyplot.subplots(figsize=(9.0, 5.15))
+    figure, axis = pyplot.subplots(figsize=(9.0, 6.05))
     _plot_longitudinal_campus_series(axis, campus_series)
     term_labels = [str(term["label"]) for term in terms]
     x = np.arange(len(terms), dtype=float)
@@ -2599,16 +2695,30 @@ def _trend_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
             fontsize=8,
         )
     insights = []
-    for series in campus_series:
+    annotations = []
+    for index, series in enumerate(campus_series):
         trend = series["trend"]
         if trend["status"] == "available":
+            annotation = (f"{series['campus']}: β = {trend['slope']:+.2f} pp / term step"
+                          f" · {_format_p(trend['p_value'])}")
             insights.append(
                 f"{series['campus']} has a {trend['direction']} fitted trend of "
                 f"{trend['slope']:+.2f} percentage points per chronological term "
-                f"position across {series['observed_term_count']} observed terms."
+                f"position across {series['observed_term_count']} observed terms; {_format_p(trend['p_value'])}."
             )
+            if trend.get("p_value_reason"):
+                insights.append(f"{series['campus']}: {trend['p_value_reason']}")
         else:
+            annotation = f"{series['campus']}: β and p unavailable ({series['observed_term_count']} observed terms)"
             insights.append(f"{series['campus']}: {trend['reason']}")
+        annotations.append(annotation)
+        figure.text(0.085, 0.16 - index * 0.055, annotation, fontsize=11,
+                    color=series["style"]["color"], weight="semibold",
+                    bbox={"facecolor": "#f1f6f7", "edgecolor": "none", "pad": 6})
+    figure.text(0.085, 0.025,
+                "β = fitted change in percentage points (pp) per selected-term step.\n"
+                "A step follows the selected-term axis; it is not necessarily one elapsed semester.",
+                fontsize=9, color="#526368", linespacing=1.4)
     missing = sum(item["missing_term_count"] for item in campus_series)
     possible = len(terms) * len(campus_series)
     observed = sum(item["observed_term_count"] for item in campus_series)
@@ -2643,7 +2753,9 @@ def _trend_chart(analysis: dict[str, Any], pyplot) -> dict[str, Any]:
             "campus_scope": _campus_scope(analysis["rows"]),
             "target_mode": "configured_by_campus_and_term",
             "missing_terms_connected": False,
+            "statistical_annotations": annotations,
         },
+        layout_rect=(0, 0.23, 1, 1),
     )
 
 
