@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% from 'presentation.html' import scope with context %}
 {% block title %}Evidence library · {{ program.name }}{% endblock %}
-{% block content %}
+{% block content %}{% if g.membership.role in ('owner','admin','coordinator') %}<div class="visit-shortcuts"><a class="button secondary" href="{{ url_for('visit.workspace') }}">Evidence workspace →</a><a class="button secondary" href="{{ url_for('visit.criteria') }}">Criterion guide →</a></div>{% endif %}
 <header class="page-head"><div><p class="eyebrow">Inspect the source</p><h1>Evidence library</h1><p class="muted">The documents and approved assessment attachments behind the findings.</p></div><a class="button secondary" href="{{ view_url('platform.analytics', view='records') }}">Assessment records →</a></header>
 {{ scope(overview) }}
 {% if sources %}<section class="section-block"><div class="section-heading"><div><p class="eyebrow">Submitted narrative & implementation</p><h2>Criterion 4 documents</h2><p class="muted">Historical program-wide documents · not filtered by current assessment selections.</p></div></div><div class="document-grid">{% for source in sources %}<article class="document-card"><span class="document-type">{{ 'WORD' if source.document.endswith('.docx') else 'PDF' }}</span><h3>{{ source.document|replace('_',' ') }}</h3><p>{{ source.role }}</p><small>{{ source.references }}</small>{% if source.available %}<a class="card-link" href="{{ url_for('platform.source_document', source_id=source.source_id) }}" target="_blank" rel="noopener">{{ 'Download document' if source.document.endswith('.docx') else 'Open source document' }} ↗</a>{% else %}<p class="signal watch">Source file not installed</p>{% endif %}</article>{% endfor %}</div></section>{% endif %}

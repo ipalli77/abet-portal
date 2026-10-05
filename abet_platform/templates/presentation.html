@@ -35,12 +35,14 @@
 <article class="case-card {{ case.status_key }}"><div class="card-topline"><span class="eyebrow">{{ case.outcome }}</span><span class="signal {{ case.status_key }}">{{ case.display_status }}</span></div><h3>{{ case.display_title }}</h3><p>{{ case.conclusion }}</p><p class="case-next"><strong>Next decision</strong>{{ case.next_step }}</p><a class="card-link" href="{{ url_for('platform.improvement_case', slug=case.slug) }}">See the evidence story <span aria-hidden="true">↗</span></a></article>
 {% endmacro %}
 
-{% macro chart(chart, name, scope_text='Selected evidence') %}
-{% if chart and chart.available %}<figure class="review-chart">
-  {% if chart.insights %}<figcaption class="chart-takeaway"><span class="eyebrow">At a glance</span>{{ chart.insights[0] }}</figcaption>{% endif %}
-  <div class="chart-tools no-print"><span>{{ scope_text }}</span><a href="{{ chart_url(name) }}">Enlarge figure</a><a href="{{ chart_url(name, 'png') }}" aria-label="Download {{ chart.title }} as high-resolution PNG">PNG · 300 dpi</a><a href="{{ chart_url(name, 'svg') }}" aria-label="Download {{ chart.title }} as SVG">SVG</a><a href="{{ chart_url(name, 'pdf') }}" aria-label="Download {{ chart.title }} as PDF">PDF</a></div>
-  <div class="chart-frame{{ ' pi-block-chart' if chart.chart_type == 'combined_pi_trend' else '' }}"{% if chart.chart_type == 'combined_pi_trend' %} style="--analysis-chart-width:{{ chart.metadata.display_width_px }}px" tabindex="0" role="region" aria-label="Scrollable combined performance-indicator chart"{% endif %}><img src="{{ chart.data_uri }}" alt="{{ chart.alt_text }}" decoding="async"></div>
-  {% if chart.insights|length > 1 %}<details class="analysis-data"><summary>Interpretation and coverage</summary><ul>{% for insight in chart.insights[1:] %}<li>{{ insight }}</li>{% endfor %}</ul></details>{% endif %}
+{% macro chart(chart, name, scope_text='Selected evidence', compact=false) %}
+{% set fitted = request.endpoint in ('platform.analytics', 'platform.chart_detail') %}
+{% if chart and chart.available %}<figure class="review-chart"{% if fitted %} data-chart-sizing{% endif %}>
+  {% if chart.insights and not compact %}<figcaption class="chart-takeaway"><span class="eyebrow">At a glance</span>{{ chart.insights[0] }}</figcaption>{% endif %}
+  <div class="chart-tools no-print">{% if not compact %}<span>{{ scope_text }}</span>{% endif %}{% if fitted %}<button class="chart-size-button" type="button" data-chart-size aria-pressed="false" aria-controls="chart-frame-{{ name }}" hidden>Detail size</button>{% endif %}{% if request.endpoint != 'platform.chart_detail' %}<a href="{{ chart_url(name) }}">Enlarge figure</a>{% endif %}<a href="{{ chart_url(name, 'png') }}" aria-label="Download {{ chart.title }} as high-resolution PNG">PNG · 300 dpi</a><a href="{{ chart_url(name, 'svg') }}" aria-label="Download {{ chart.title }} as SVG">SVG</a><a href="{{ chart_url(name, 'pdf') }}" aria-label="Download {{ chart.title }} as PDF">PDF</a></div>
+  <div id="chart-frame-{{ name }}" class="chart-frame{{ ' pi-block-chart' if chart.chart_type == 'combined_pi_trend' else '' }}"{% if chart.chart_type == 'combined_pi_trend' %} style="--analysis-chart-width:{{ chart.metadata.display_width_px }}px"{% endif %}{% if fitted or chart.chart_type == 'combined_pi_trend' %} tabindex="0" role="region" aria-label="{{ chart.title }}"{% endif %}><img src="{{ chart.data_uri }}" alt="{{ chart.alt_text }}" decoding="async"></div>
+  {% if fitted %}<p class="chart-display-note no-print" data-chart-size-note aria-live="polite">Full figure shown. High-resolution downloads retain all labels and detail.</p>{% endif %}
+  {% if chart.insights|length > 1 and not compact %}<details class="analysis-data"><summary>Interpretation and coverage</summary><ul>{% for insight in chart.insights[1:] %}<li>{{ insight }}</li>{% endfor %}</ul></details>{% endif %}
 </figure>{% else %}<div class="empty-compact"><strong>Chart unavailable for this selection.</strong> {{ chart.reason if chart else 'There is not enough evidence to draw this chart.' }}</div>{% endif %}
 {% endmacro %}
 

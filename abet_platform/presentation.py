@@ -10,8 +10,17 @@ ANALYSIS_VIEWS = (
     ("indicators", "Performance indicators"), ("campus", "Campus comparison"),
     ("bloom", "Bloom & statistics"), ("records", "Source records"),
 )
+SUMMARY_FIGURES = (
+    ("course_attainment", "Course attainment", "courses", "Course means and configured targets."),
+    ("campus_comparison", "Campus comparison", "campus", "Grouped campus means; an unmatched descriptive comparison."),
+    ("trend_line", "Attainment trends", "bloom", "Observed term means and fitted trends."),
+    ("bloom_boxplot", "Bloom levels", "bloom", "Attainment distributions by cognitive demand."),
+    ("course_outcome_heatmap", "Course × outcome", "courses", "Mean attainment and evidence coverage."),
+    ("semester_course", "Course trends", "courses", "Term-by-term results within each course."),
+    ("semester_indicator", "PI and Bloom trends", "indicators", "All selected performance indicators on one shared scale."),
+)
 VIEW_CHARTS = {
-    "summary": ("trend_line",),
+    "summary": tuple(item[0] for item in SUMMARY_FIGURES),
     "courses": ("course_attainment", "semester_course", "course_outcome_heatmap"),
     "indicators": ("semester_indicator",),
     "campus": ("campus_comparison", "trend_line"),

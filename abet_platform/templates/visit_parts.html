@@ -1,0 +1,7 @@
+{% macro resource_cards(resources) %}
+<div class="visit-card-grid">{% for resource in resources %}<article class="visit-card"><p class="eyebrow">{{ resource_kinds.get(resource.data.document_kind, 'Supporting document') }}</p><h3><a href="{{ url_for('visit.detail',entry_id=resource.id) }}">{{ resource.title }}</a></h3><p>{{ resource.data.summary }}</p><div class="visit-meta"><span>{{ resource.campus }}</span><span>{{ resource.data.period or resource.data.event_date or 'Date not recorded' }}</span><span>{{ resource.data.version_label }}</span></div></article>{% else %}<p class="empty-compact">No published supporting documents in this section.</p>{% endfor %}</div>
+{% endmacro %}
+{% macro milestones(items) %}
+<ol class="visit-timeline">{% for item in items %}<li><div class="timeline-date">{{ item.data.event_date or item.data.period or 'Date to confirm' }}<small>{{ milestone_stages.get(item.data.stage,'Milestone') }}</small></div><article><h3><a href="{{ url_for('visit.detail',entry_id=item.id) }}">{{ item.title }}</a></h3><p>{{ item.data.summary }}</p><small>{{ item.campus }}{% if item.data.due_on %} · Next review {{ item.data.due_on }}{% endif %}</small></article></li>{% else %}<li><p class="empty-compact">No additional dated milestones published yet.</p></li>{% endfor %}</ol>
+{% endmacro %}
+{% macro entry_link(entry) %}<a href="{{ url_for('visit.detail',entry_id=entry.id) }}">{{ entry.title }}</a>{% endmacro %}

@@ -116,6 +116,7 @@ def init_db() -> None:
     schema_path = Path(__file__).with_name("schema.sql")
     connection = get_db()
     connection.executescript(schema_path.read_text(encoding="utf-8"))
+    connection.executescript(Path(__file__).with_name("visit_schema.sql").read_text(encoding="utf-8"))
     installed_versions = {
         row["version"] for row in connection.execute("SELECT version FROM schema_versions")
     }

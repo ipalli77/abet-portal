@@ -6,6 +6,8 @@
   <title>{% block title %}{{ config.PRODUCT_NAME }}{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='review.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='visit.css') }}">
+  {% block page_styles %}{% endblock %}
   <script defer src="{{ url_for('static', filename='app.js') }}"></script>
 </head>
 <body{% if brand_style %} style="{{ brand_style }}"{% endif %} class="edition-{{ config.EDITION }}">
@@ -15,7 +17,8 @@
   <header class="topbar">
     <a class="brand" href="{{ url_for('platform.evaluator') if evaluator_mode|default(false) else url_for('platform.dashboard') }}"><span class="brand-mark">ME</span><span>{{ config.PRODUCT_NAME }}<small>Assessment & continuous improvement</small></span></a>
     <nav aria-label="Primary navigation">
-      {% set navigation = [('platform.dashboard','Overview'),('platform.evaluator','Evaluator view'),('platform.analytics','Analysis'),('platform.actions','Improvement'),('platform.evidence_library','Evidence'),('platform.report','Report')] %}
+      {% set curriculum_home = config.EDITION == 'utrgv_mece' and g.membership.role in ('owner','admin','coordinator') %}
+      {% set navigation = [('platform.dashboard','Curriculum' if curriculum_home else 'Overview'),('platform.analytics','Analysis'),('platform.actions','Improvement'),('platform.evidence_library','Evidence'),('platform.report','Report')] %}
       {% for endpoint, label in navigation %}<a href="{{ url_for(endpoint) }}"{% if request.endpoint == endpoint %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
       {% if not evaluator_mode|default(false) %}<a href="{{ url_for('platform.assessments') }}"{% if request.endpoint in ('platform.assessments','platform.assessment_new','platform.assessment_edit') %} aria-current="page"{% endif %}>Assessment</a>
       {% if g.membership.role in ('owner','admin','coordinator') %}<a href="{{ url_for('platform.configuration') }}"{% if request.endpoint in ('platform.configuration','platform.users') %} aria-current="page"{% endif %}>Configure</a>{% endif %}{% endif %}
@@ -29,6 +32,11 @@
       </form>
     </div>
   </header>
+  <nav class="visit-nav no-print" aria-label="Evidence sections">
+    {% set sections = [('platform.evaluator','Program summary'),('visit.courses','Course folders'),('visit.mapping','Assessment map'),('visit.campuses','Campus evidence'),('visit.capstone','Capstone')] %}
+    {% if g.membership.role in ('owner','admin','coordinator') %}{% set sections = sections + [('visit.criteria','Criterion guide'),('visit.timeline','Timeline'),('visit.workspace','Evidence workspace'),('visit.editions','Visit editions')] %}{% endif %}
+    {% for endpoint,label in sections %}<a href="{{ url_for(endpoint) }}"{% if request.endpoint == endpoint %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+  </nav>
   {% if g.faculty_preview|default(false) %}
     <aside class="faculty-view-banner" aria-label="Faculty View support login">
       <div class="faculty-view-banner-inner">

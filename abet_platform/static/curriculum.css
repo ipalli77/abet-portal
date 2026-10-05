@@ -1,0 +1,152 @@
+/* A compact, read-only map: evidence colors are independent of attainment. */
+.curriculum-shell { padding-top:1.2rem; }
+.curriculum-shell .page-head { margin-bottom:.9rem; }
+.curriculum-shell .page-head h1 { font-size:clamp(1.7rem,2.5vw,2.2rem); }
+.curriculum-shell .page-head .eyebrow { margin-bottom:.4rem; }
+.curriculum-shell .page-head .muted { font-size:.87rem; margin-top:.4rem; }
+.curriculum-shell .view-tabs { margin-top:.9rem; }
+.curriculum-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; margin:.9rem 0; }
+.curriculum-summary > div { display:flex; gap:1.1rem; align-items:center; padding:.8rem 1.15rem; border:1px solid var(--line); border-radius:12px; background:#fff; }
+.curriculum-summary > div:nth-child(2) { background:#edf6f3; border-color:#d3e6de; }
+.curriculum-summary > div:nth-child(3) { background:#fcf2e9; border-color:#eadbce; }
+.curriculum-summary strong { font-size:2rem; line-height:1; font-weight:650; letter-spacing:-.05em; }
+.curriculum-summary span { font-size:.86rem; font-weight:650; }
+.curriculum-summary small { display:block; color:var(--muted); font-size:.71rem; font-weight:400; margin-top:.2rem; }
+.curriculum-summary.compact-summary { display:flex; gap:.6rem 1.6rem; flex-wrap:wrap; margin:.7rem 0; }
+.compact-summary > div { padding:.35rem .65rem; border-radius:6px; gap:.45rem; border:0; }
+.compact-summary strong { font-size:1.05rem; letter-spacing:0; }
+.compact-summary span { font-size:.75rem; font-weight:500; }
+.curriculum-legend { display:flex; flex-wrap:wrap; gap:.65rem 1.6rem; margin:.75rem 0 1rem; font-size:.78rem; color:#425d5d; }
+.curriculum-legend span { display:flex; align-items:center; gap:.5rem; }
+.legend-swatch { width:15px; height:15px; border-radius:4px; border:1px solid #bbcfc7; background:white; }
+.legend-swatch.assessed { background:#e7f3ed; border-color:#71a38f; }
+.legend-swatch.improvement { background:#f9eadb; border-color:#c6986d; }
+.legend-swatch.neutral { background:#fff; border-color:#b6c5c5; }
+.curriculum-panel { padding:1.25rem 0 0; overflow:hidden; }
+.curriculum-panel > .section-heading,.curriculum-filters,.curriculum-count { margin-left:1.25rem; margin-right:1.25rem; }
+.curriculum-panel .section-heading p { font-size:.8rem; }
+.curriculum-filters { display:grid; grid-template-columns:1.3fr 1fr 1fr auto auto; align-items:end; gap:.75rem; margin-top:1.2rem; }
+.curriculum-filters label { display:grid; gap:.3rem; font-size:.75rem; }
+.curriculum-filters input,.curriculum-filters select { min-width:0; width:100%; padding:.6rem .65rem; font-size:.8rem; height:41px; }
+.curriculum-filters a { font-size:.8rem; padding:.65rem .2rem; }
+.curriculum-count { font-size:.74rem; color:var(--muted); margin-top:1rem; margin-bottom:.8rem; }
+.curriculum-case small { display:block; font-size:.67rem; color:#5e7371; margin-top:.3rem; }
+.curriculum-slo { display:grid; grid-template-columns:48px minmax(0,1fr); align-items:baseline; gap:.45rem; margin-bottom:.32rem; }
+.curriculum-slo strong { font-size:.75rem; }
+.curriculum-slo > span { display:flex; flex-wrap:wrap; gap:.25rem; }
+.curriculum-slo a { display:inline-block; background:#ffffffb8; border:1px solid #d7e0db; border-radius:4px; padding:.08rem .33rem; font-size:.69rem; white-space:nowrap; }
+.curriculum-slo a:hover { background:white; border-color:#6d9c8c; }
+.curriculum-case { display:block; font-size:.76rem; line-height:1.5; margin-bottom:.55rem; font-weight:650; }
+.curriculum-case:last-child { margin-bottom:0; }
+.curriculum-case small { font-weight:400; }
+.matrix-group { margin:0 1.25rem 1.2rem; }
+.matrix-group > h3 { display:flex; align-items:center; gap:.6rem; font-size:.82rem; margin:.9rem 0 .5rem; }
+.matrix-group > h3 span { font-weight:500; font-size:.71rem; color:var(--muted); }
+.course-matrix { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); padding:0; margin:0; list-style:none; border-top:1px solid #d9e3df; border-left:1px solid #d9e3df; }
+.matrix-course { min-width:0; background:#fff; padding:.65rem .75rem .45rem; border-right:1px solid #d9e3df; border-bottom:1px solid #d9e3df; display:flex; flex-direction:column; gap:.35rem; overflow-wrap:anywhere; }
+.matrix-course.assessed { background:#eef7f2; }
+.matrix-course.improvement { background:#fcf1e6; }
+.matrix-course:target { outline:2px solid #287e9e; outline-offset:-2px; }
+.matrix-course-head { display:flex; justify-content:space-between; align-items:baseline; gap:.6rem; }
+.matrix-course-head h4 { font-size:.86rem; line-height:1.35; margin:0; color:#153d3d; }
+.matrix-status { font-size:.62rem; font-weight:700; color:#56645b; flex-shrink:0; }
+.matrix-course-title { font-size:.74rem; color:#4c6662; line-height:1.4; margin:0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
+.matrix-coverage { font-size:.72rem; line-height:1.5; margin:.1rem 0; }
+.matrix-coverage > div { display:flex; align-items:baseline; gap:.5rem; }
+.matrix-coverage strong { min-width:40px; font-size:.7rem; }
+.matrix-coverage a { text-decoration:underline; text-decoration-color:#87a397; text-underline-offset:3px; }
+.matrix-coverage a:hover { color:#9f4e17; }
+.matrix-empty { font-size:.67rem; color:#637571; }
+.matrix-details { margin-top:auto; padding-top:.15rem; }
+.matrix-details > summary { width:fit-content; font-size:.67rem; font-weight:550; padding:.2rem 0; }
+.matrix-details[open] > summary { margin-bottom:.5rem; }
+.matrix-details > div { border-top:1px solid #dce5de; padding-top:.5rem; }
+.matrix-details p { font-size:.72rem; line-height:1.6; margin:0 0 .5rem; }
+.matrix-pending-count { font-weight:400; color:#67776f; }
+.matrix-footnote { font-size:.7rem; color:var(--muted); margin:.5rem 1.25rem 1rem; }
+.curriculum-notes { margin-top:1.5rem; padding:0; }
+.curriculum-notes h3 { font-size:.95rem; margin-top:1.2rem; }
+.curriculum-notes p,.curriculum-notes li { font-size:.83rem; line-height:1.7; }
+.curriculum-notes ul { padding-left:1.25rem; }
+.curriculum-notes li { margin:.45rem 0; }
+.study-category-key { display:flex; flex-wrap:wrap; gap:1.2rem; font-size:.75rem; margin:1rem 0; }
+.study-category-key .math-science,.study-course-code.math-science { color:#316d97; }
+.study-category-key .engineering,.study-course-code.engineering { color:#9f571b; }
+.study-category-key .core,.study-course-code.core { color:#596b72; }
+.study-years { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1rem; align-items:start; }
+.study-year { border:1px solid var(--line); border-radius:12px; overflow:hidden; background:white; }
+.study-year > header { padding:1.2rem; background:#edf3f1; border-bottom:1px solid #d7e4df; }
+.study-year:nth-child(2) > header { background:#edf2f8; }
+.study-year:nth-child(3) > header { background:#f6f0e8; }
+.study-year:nth-child(4) > header { background:#eef0f8; }
+.study-year > header > span { font-size:.65rem; font-weight:700; color:#5e7971; text-transform:uppercase; letter-spacing:.1em; }
+.study-year h3 { font-size:1.22rem; margin:.25rem 0 .4rem; }
+.study-year header strong { font-size:.85rem; font-weight:650; color:#365854; }
+.study-year header small { font-size:.7rem; font-weight:400; }
+.study-term { padding:.85rem .75rem .25rem; }
+.study-term h4 { display:flex; align-items:baseline; justify-content:space-between; gap:.5rem; font-size:.86rem; margin:.2rem .3rem .6rem; }
+.study-term h4 span { font-size:.73rem; font-weight:400; color:#627574; }
+.study-term ul { list-style:none; margin:0; padding:0; }
+.study-term li { margin:.3rem 0; padding:.55rem .6rem; border:1px solid #ecf0ee; border-radius:6px; }
+.study-course.assessed { background:#edf7f1; border-color:#deebe3; }
+.study-course.improvement { background:#fcf0e5; border-color:#f0dfcd; }
+.study-course > div { display:flex; justify-content:space-between; gap:.5rem; align-items:baseline; }
+.study-course-code { font-size:.79rem; font-weight:700; line-height:1.4; }
+.study-course-code a { color:inherit; text-decoration:underline; text-decoration-color:#c4cfc9; }
+.study-course-hours { font-size:.76rem; font-weight:700; flex-shrink:0; }
+.study-course > small { display:block; font-size:.66rem; color:#62746f; line-height:1.4; margin-top:.18rem; }
+.study-course-status { display:block; font-size:.6rem; font-weight:650; color:#556b60; margin-top:.32rem; }
+.study-term li.study-unresolved { background:#fff9ed; border:1px dashed #c6a778; }
+.study-unresolved strong,.study-unresolved small { display:block; font-size:.69rem; color:#785a32; }
+.curriculum-plan-note { background:#f1f4f3; border-radius:8px; padding:1rem; max-width:none; font-size:.78rem; color:#526964; margin-top:1.2rem; }
+.curriculum-plan .section-heading .muted { font-size:.83rem; }
+.curriculum-credits { margin-top:1.5rem; padding:1.2rem; break-inside:avoid; }
+.credit-table-wrap { margin-top:.6rem; }
+#curriculum-credit-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:.88rem; }
+#curriculum-credit-table caption { text-align:left; color:var(--muted); font-size:.75rem; padding:0 0 .8rem; }
+#curriculum-credit-table th,#curriculum-credit-table td { padding:.7rem 1rem; border:1px solid #d9dedb; white-space:normal; overflow-wrap:break-word; }
+#curriculum-credit-table thead th { background:#ad4f12; color:white; font-size:.8rem; letter-spacing:0; text-transform:none; line-height:1.4; }
+#curriculum-credit-table thead th:first-child { width:50%; text-align:left; }
+#curriculum-credit-table th:not(:first-child),#curriculum-credit-table td { text-align:center; }
+#curriculum-credit-table tbody th { text-align:left; font-weight:500; text-transform:none; letter-spacing:0; background:none; }
+#curriculum-credit-table tbody tr:nth-child(even) { background:#f3f6f5; }
+#curriculum-credit-table td { font-variant-numeric:tabular-nums; font-weight:600; }
+#curriculum-credit-table .credit-total { border-top:2px solid #c2d0c8; }
+#curriculum-credit-table .credit-total th,#curriculum-credit-table .credit-total td { font-weight:750; }
+@media (max-width:1100px) {
+  .study-years { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .curriculum-filters { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .curriculum-filters button,.curriculum-filters > a { justify-self:start; }
+  .course-matrix { grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+@media (max-width:850px) { .course-matrix { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:350px) { .course-matrix { grid-template-columns:1fr; } }
+@media (max-width:650px) {
+  .curriculum-summary { grid-template-columns:1fr; gap:.5rem; }
+  .curriculum-summary.compact-summary { gap:.4rem; }
+  .curriculum-summary.compact-summary > div { padding:.3rem .5rem; }
+  .curriculum-filters { grid-template-columns:1fr; }
+  .curriculum-filters button { width:100%; }
+  .curriculum-legend { gap:.5rem 1rem; font-size:.72rem; }
+  .matrix-group { margin-left:.7rem; margin-right:.7rem; }
+  .matrix-course { padding:.6rem .5rem .4rem; }
+  .matrix-course-head { gap:.3rem; flex-wrap:wrap; }
+  .matrix-course-head h4 { font-size:.8rem; }
+  .study-years { grid-template-columns:1fr; }
+  .study-course-code { font-size:.88rem; }
+  .study-course > small { font-size:.75rem; }
+  .study-course-status { font-size:.68rem; }
+  .curriculum-plan .section-heading { align-items:start; flex-direction:column; }
+  .curriculum-credits { padding:.85rem; }
+  #curriculum-credit-table { font-size:.77rem; }
+  #curriculum-credit-table th,#curriculum-credit-table td { padding:.6rem .5rem; }
+  #curriculum-credit-table thead th { font-size:.69rem; }
+}
+@media print {
+  .curriculum-filters,.curriculum-plan button,.head-actions { display:none; }
+  .study-years { grid-template-columns:repeat(2,minmax(0,1fr)); gap:.6rem; }
+  .study-year { break-inside:avoid; }
+  .course-matrix { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .matrix-course { break-inside:avoid; }
+  .study-years,.course-matrix,.curriculum-legend,.curriculum-credits { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+}

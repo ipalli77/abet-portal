@@ -1,0 +1,68 @@
+/* Evidence navigation: restrained color, short titles, readable dense data. */
+.visit-nav { display:flex; flex-wrap:wrap; gap:.3rem .95rem; padding:.7rem max(1rem,calc((100vw - 1440px)/2)); background:#fff; border-bottom:1px solid #dde5e8; font-size:.8rem; }
+.visit-nav a { color:#38535b; text-decoration:none; padding:.3rem .15rem; }
+.visit-nav a[aria-current=page] { color:#8d410e; border-bottom:2px solid #ca743f; font-weight:750; }
+.visit-card-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,285px),1fr)); gap:1rem; }
+.visit-card { min-width:0; border:1px solid #dce5e8; background:#fff; border-radius:14px; padding:1.3rem; }
+.visit-card h2,.visit-card h3 { font-size:1.15rem; line-height:1.3; margin:.35rem 0 .7rem; }
+.visit-card p { font-size:.92rem; line-height:1.55; }
+.visit-card a { overflow-wrap:anywhere; }
+.visit-meta,.visit-key,.visit-shortcuts { display:flex; flex-wrap:wrap; gap:.6rem 1rem; align-items:center; margin:1rem 0; }
+.visit-meta { font-size:.76rem; color:#5d6c75; }
+.visit-key span,.map-pill { border-radius:5px; padding:.3rem .5rem; font-size:.8rem; }
+.map-observed { background:#e2f1ec; color:#1a594a; }
+.map-planned { background:#f9eadd; color:#814318; }
+.map-pill { display:inline-block; margin:.15rem; white-space:nowrap; text-decoration:none; }
+.visit-map-scroll { max-height:72vh; overflow:auto; border:1px solid #e2e8ea; border-radius:8px; }
+.visit-result-scroll { max-height:600px; overflow:auto; }
+.visit-result-scroll thead th { position:sticky; top:0; background:#edf2f4; }
+.visit-map { min-width:920px; font-size:.85rem; }
+.visit-map caption { padding:.7rem; text-align:left; }
+.visit-map thead th { position:sticky; top:0; z-index:2; background:#edf2f4; }
+.visit-map tbody th { min-width:190px; max-width:240px; background:#f8fafb; }
+.visit-map td,.visit-map th { border-right:1px solid #e5eaec; padding:.7rem; }
+.visit-map td { text-align:center; }
+.visit-map small { font-weight:400; font-size:.73rem; }
+.block { display:block; margin-top:.2rem; }
+.visit-facts { display:grid; grid-template-columns:1fr 1.4fr 2fr; gap:1rem; margin:1rem 0 1.5rem; }
+.visit-facts>div { padding:1rem 1.2rem; border-left:3px solid #91b5a9; background:#edf5f2; border-radius:8px; }
+.visit-facts span { display:block; font-size:.78rem; color:#52656b; margin-bottom:.5rem; }
+.visit-facts strong { font-size:1.15rem; }
+.visit-facts .fact-names { font-size:.93rem; }
+.visit-prep { border-top:1px solid #e3e9eb; padding:1rem 0; margin-top:1rem; }
+.visit-prep summary { cursor:pointer; font-weight:650; }
+.visit-criterion-nav { display:grid; grid-template-columns:repeat(3,1fr); gap:.6rem; }
+.visit-criterion-nav a { display:flex; gap:.7rem; align-items:center; padding:.8rem 1rem; border:1px solid #dce5e8; border-radius:9px; color:#365a5c; background:#fff; font-weight:750; text-decoration:none; }
+.visit-criterion-nav span { font-weight:500; font-size:.88rem; }
+.visit-source { font-size:.8rem; color:#667681; margin:1rem 0; }
+.visit-question { font-size:1.1rem; color:#254e51; }
+.visit-timeline { padding:0; list-style:none; }
+.visit-timeline li { display:grid; grid-template-columns:155px minmax(0,1fr); gap:1.2rem; padding:0 0 1.5rem; }
+.timeline-date { border-right:3px solid #a8c8bf; padding-right:1rem; color:#476a62; font-weight:700; font-size:.88rem; }
+.timeline-date small { display:block; margin-top:.4rem; font-weight:400; }
+.visit-timeline h3 { margin-top:0; font-size:1.1rem; }
+.visit-case-link { padding:.8rem 0; border-bottom:1px solid #e6eaec; }
+.campus-coverage-table .campus-edinburg { border-top:3px solid #075b66; }
+.campus-coverage-table .campus-brownsville { border-top:3px solid #c67235; }
+.campus-coverage-table td { width:40%; }
+.campus-coverage-table small { max-width:30rem; font-size:.78rem; }
+.project-card { background:linear-gradient(140deg,#fff 75%,#edf4f2); position:relative; }
+.project-index { color:#688b80; font-size:1.7rem; font-weight:750; }
+.project-card dt { margin-top:.6rem; font-weight:650; font-size:.8rem; }
+.project-card dd { margin:.3rem 0; font-size:.88rem; }
+.visit-project-photo { display:block; max-height:480px; max-width:100%; height:auto; width:auto; margin:0 auto 1rem; border-radius:10px; object-fit:contain; }
+.visit-editor { display:grid; gap:1rem; max-width:960px; }
+.visit-editor label { display:grid; gap:.4rem; }
+.visit-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+.visit-editor .visit-check,.visit-checks label { display:flex; flex-direction:row; align-items:flex-start; gap:.6rem; font-weight:400; line-height:1.5; }
+.visit-checks { display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
+.visit-editor input[type=checkbox] { width:auto; margin-top:.3rem; flex:0 0 auto; }
+.visit-editor fieldset { border:1px solid #d9e3e7; border-radius:8px; padding:1rem; }
+.visit-editor legend { font-weight:650; }
+.visit-editor textarea { resize:vertical; min-height:95px; }
+.visit-edition { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:1rem 0; border-bottom:1px solid #e0e7e9; }
+.visit-hash { font-size:.75rem; overflow-wrap:anywhere; }
+.visit-empty { grid-column:1/-1; }
+.state-label { background:#edf2f4; border-radius:5px; padding:.3rem .5rem; font-size:.78rem; }
+@media(max-width:700px) { .visit-nav { gap:.2rem .7rem; font-size:.73rem; }.visit-facts,.visit-form-grid,.visit-checks { grid-template-columns:1fr; }.visit-criterion-nav { grid-template-columns:repeat(2,1fr); }.visit-timeline li { grid-template-columns:1fr; gap:.5rem; }.timeline-date { border-right:0; border-left:3px solid #a8c8bf; padding-left:.7rem; }.visit-edition { align-items:flex-start; flex-direction:column; }.campus-coverage-table { min-width:580px; } }
+@media print { .visit-nav,.visit-shortcuts,.visit-editor { display:none; }.visit-card,.visit-facts>div { break-inside:avoid; }.visit-map-scroll,.visit-result-scroll { max-height:none; overflow:visible; }.visit-map { min-width:0; }.visit-card-grid { grid-template-columns:1fr 1fr; } }

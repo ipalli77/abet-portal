@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
 {% from 'presentation.html' import scope, outcome_cards, case_card, campus_key with context %}
-{% block title %}Evaluator view · {{ program.name }}{% endblock %}
+{% block title %}Program summary · {{ program.name }}{% endblock %}
 {% block content %}
-<header class="page-head"><div><p class="eyebrow">Evaluator view</p><h1>Criterion 4 overview</h1><p class="muted">{{ program.name }} · {{ program.degree_level }} · {{ program.commission }}</p></div><div class="head-actions no-print"><a class="button secondary" href="{{ view_url('platform.report') }}">Open evidence report</a><button class="button primary" data-print type="button">Print summary</button></div></header>
+<header class="page-head"><div><p class="eyebrow">Program summary</p><h1>Criterion 4 overview</h1><p class="muted">{{ program.name }} · {{ program.degree_level }} · {{ program.commission }}</p></div><div class="head-actions no-print"><a class="button secondary" href="{{ view_url('platform.report') }}">Open evidence report</a><button class="button primary" data-print type="button">Print summary</button></div></header>
 {{ scope(overview) }}
 <form class="review-period no-print" method="get">{% for key in request.args if key not in ('term_id','campus','campus_selection','evidence_scope') %}{% for value in request.args.getlist(key) %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}{% endfor %}<label>Assessment period<select name="term_id"><option value="">All assessed terms</option>{% for term in terms %}<option value="{{ term.id }}" {{ 'selected' if request.args.get('term_id') == term.id|string }}>{{ term.name }}</option>{% endfor %}</select></label><label>Campus<select name="campus"><option value="">All authorized campuses</option>{% for campus in campuses %}<option {{ 'selected' if request.args.getlist('campus') == [campus] }}>{{ campus }}</option>{% endfor %}</select></label><button class="button secondary">Update summary</button></form>
 <p class="access-note">Approved records within your course and campus access. Updated {{ overview.generated_at }}.</p>

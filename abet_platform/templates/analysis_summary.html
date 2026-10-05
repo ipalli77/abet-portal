@@ -1,0 +1,22 @@
+<section class="finding-banner"><h2>Assessment summary</h2></section>
+<section class="metrics compact"><article><span>Measures included</span><strong>{{ scope_metrics.count }}</strong><small>{{ scope_metrics.approved }} approved</small></article><article><span>Mean attainment</span><strong>{{ scope_metrics.average }}%</strong><small>Assessment-measure average</small></article><article><span>Measures meeting target</span><strong>{{ scope_metrics.met_rate }}%</strong><small>{{ scope_metrics.met_count }} of {{ scope_metrics.count }} measures</small></article><article><span>Evidence coverage</span><strong>{{ scope_metrics.courses }}<em>courses</em></strong><small>{{ scope_metrics.terms }} observed terms</small></article></section>
+<div class="section-heading"><div><p class="eyebrow">Figures at a glance</p><h2>Analysis overview</h2><p class="muted">Each figure uses the selection above. Open its explanation for definitions, values, and interpretation.</p></div></div>
+<div class="summary-figure-grid">
+{% for name,title,view,description in summary_figures if name != 'campus_comparison' or config.EDITION == 'utrgv_mece' %}
+<section class="panel summary-figure-card{{ ' summary-figure-wide' if name == 'semester_indicator' else '' }}" aria-labelledby="summary-{{ name }}" data-summary-figure="{{ name }}">
+  <div class="summary-figure-heading"><span class="figure-index" aria-hidden="true">{{ '%02d'|format(loop.index) }}</span><div><h3 id="summary-{{ name }}">{{ title }}</h3><p>{{ description }}{% if name in ('course_attainment','course_outcome_heatmap','bloom_boxplot') and analysis.methodology.campus_scope.mode == 'combined' %} Both campuses are pooled in this figure.{% endif %}</p></div></div>
+  {{ chart(charts.get(name), name, overview.period, compact=true) }}
+  {% if name == 'semester_indicator' and not request.args.get('outcome_id') %}<p class="summary-figure-note">Select one outcome for readable PI labels, or use Detail size. All selected PIs remain on the same plot.</p>{% endif %}
+  <a class="card-link" data-figure-explanation="{{ name }}" href="{{ view_url(view=view, page=none, q=none) }}#explanation-{{ name }}">Values and explanation <span aria-hidden="true">→</span></a>
+</section>
+{% endfor %}
+{% if matched.count %}
+<section class="panel summary-figure-card summary-figure-wide" aria-labelledby="summary-matched">
+  <div class="summary-figure-heading"><span class="figure-index" aria-hidden="true">↔</span><div><h3 id="summary-matched">Matched campus assessments</h3><p>{{ matched.count }} matched assessment cells · the same course, term, outcome, PI, method, Bloom level, rubric, and assessment name.</p></div></div>
+  {{ campus_key() }}{% include 'matched_campus_plot.html' %}
+  <a class="card-link" href="{{ view_url(view='campus', page=none, q=none) }}#explanation-matched">Matched values and explanation <span aria-hidden="true">→</span></a>
+</section>
+{% endif %}
+</div>
+<details class="panel"><summary>Outcome values</summary><div class="details-body">{{ summary_table(analysis.outcomes, 'Outcome') }}<p class="analysis-caveat">An outcome mean above target can coexist with a below-target PI. The target is configured by the program, not an ABET-mandated percentage.</p></div></details>
+<details class="panel"><summary>Summary definitions</summary><div class="details-body"><p><strong>Measure:</strong> one assessment record, not one student. {% if config.EDITION == 'utrgv_mece' %}<strong>Attainment:</strong> Expert + Practitioner percentages for an EPAN record.{% else %}<strong>Attainment:</strong> the percentage in rubric levels marked as attained.{% endif %}</p><p><strong>Mean attainment:</strong> the average of the selected record percentages, with equal weight for each record. It is not a student-weighted success rate. <strong>Measures meeting target:</strong> {{ scope_metrics.met_count }} records meet their own target out of {{ scope_metrics.count }}, or {{ scope_metrics.met_rate }}%. That percentage is different from mean attainment.</p><p>Missing evidence is not zero. Direct: {{ overview.direct_count }} measures{% if overview.direct_mean is not none %}, mean {{ overview.direct_mean }}%{% endif %}. Indirect: {{ overview.indirect_count }} measures{% if overview.indirect_mean is not none %}, mean {{ overview.indirect_mean }}%{% endif %}. Use the Method filter to separate them.</p></div></details>

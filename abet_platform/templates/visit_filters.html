@@ -1,0 +1,6 @@
+<form class="review-period no-print" method="get" aria-label="Evidence selection">
+{% for key in request.args if key not in ('campus','term_id','page','q','campus_selection') %}{% for value in request.args.getlist(key) %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}{% endfor %}
+<label>Campus<select name="campus"><option value="">All authorized campuses</option>{% for campus in filters.available_campuses %}<option value="{{ campus }}" {{ 'selected' if request.args.getlist('campus') == [campus] }}>{{ campus }}</option>{% endfor %}</select></label>
+<label>Assessment period<select name="term_id"><option value="">All assessed terms</option>{% for term in filters.dimensions.terms %}<option value="{{ term.id }}" {{ 'selected' if request.args.get('term_id') == term.id|string }}>{{ term.name }}</option>{% endfor %}</select></label>
+<button class="button secondary">Update evidence</button></form>
+<p class="visit-source">Approved records · {{ filters.selected_campuses|sort|join(' & ') }} · {{ 'Selected term' if request.args.get('term_id') else 'All assessed terms' }}. {% if filters.selected_dimensions.outcome_id %}Selected outcome / PI filters retained. {% endif %}Supplementary documents and plans retain their own labeled dates.</p>

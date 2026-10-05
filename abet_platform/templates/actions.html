@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% from 'presentation.html' import case_card, source_links with context %}
 {% block title %}Improvement · {{ program.name }}{% endblock %}
-{% block content %}
+{% block content %}{% if g.membership.role in ('owner','admin','coordinator') %}<div class="visit-shortcuts"><a class="button secondary" href="{{ url_for('visit.timeline') }}">Dated improvement timeline →</a><a class="button secondary" href="{{ url_for('visit.edit',kind='milestone') }}">Add milestone</a></div>{% endif %}
 {% set has_continuous_improvement_story = continuous_improvement_story is defined and continuous_improvement_story %}
 <div class="page-head ci-page-head">
   <div>
@@ -242,7 +242,7 @@
     {% if actions %}
       <div class="action-list">
         {% for action in actions %}
-          <article>
+          <article id="action-{{ action.id }}">
             <div class="action-top"><span class="status {{ action.status }}">{{ action.status.replace('_',' ') }}</span><small>{{ action.outcome_code or 'Program-wide' }}{% if action.due_on %} · due {{ action.due_on }}{% endif %}</small></div>
             <h3>{{ action.title }}</h3>
             <p>{{ action.description }}</p>

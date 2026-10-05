@@ -1,6 +1,8 @@
 {% extends 'base.html' %}
 {% from 'presentation.html' import scope, chart, summary_table, campus_key with context %}
+{% from 'analysis_explanations.html' import explain_figure, explain_statistics, p_value %}
 {% block title %}Analysis · {{ program.name }}{% endblock %}
+{% block main_class %}shell analysis-page analysis-figures{% endblock %}
 {% block content %}
 <header class="page-head"><div><p class="eyebrow">Explore the evidence</p><h1>Attainment analysis</h1><p class="muted">Course, outcome, and campus results.</p></div><div class="head-actions no-print"><a class="button secondary" href="{{ export_url }}">Export full selection</a>{% if evidence_scope == 'approved' %}<a class="button secondary" href="{{ view_url('platform.report', view=none, page=none, q=none) }}">Selection report</a>{% endif %}<button class="button primary" type="button" data-print>Print this view</button></div></header>
 {{ scope(overview, 'PREVIEW · not official' if evidence_scope == 'all' else 'Approved evidence') }}
@@ -10,19 +12,19 @@
 <p class="selection-note">{{ scope_metrics.courses }} selected courses with evidence · {{ scope_metrics.terms }} terms · {{ 'Direct and indirect evidence' if not request.args.get('method') else request.args.get('method')|title ~ ' evidence' }}. All views and exports retain your course and campus selection.</p>
 {% if records %}
 {% if active_view == 'summary' %}
-<section class="finding-banner"><h2>Assessment summary</h2></section>
-<section class="metrics compact"><article><span>Measures included</span><strong>{{ scope_metrics.count }}</strong><small>{{ scope_metrics.approved }} approved</small></article><article><span>Mean attainment</span><strong>{{ scope_metrics.average }}%</strong><small>Assessment-measure average</small></article><article><span>Measures meeting target</span><strong>{{ scope_metrics.met_rate }}%</strong><small>{{ scope_metrics.met_count }} of {{ scope_metrics.count }} measures</small></article><article><span>Evidence coverage</span><strong>{{ scope_metrics.courses }}<em>courses</em></strong><small>{{ scope_metrics.terms }} observed terms</small></article></section>
-<section class="panel"><div class="section-heading"><div><p class="eyebrow">Student outcomes</p><h2>Outcome results</h2></div></div>{{ summary_table(analysis.outcomes, 'Outcome') }}<p class="analysis-caveat">An outcome mean above target can coexist with a below-target PI. The target is configured by the program, not an ABET-mandated percentage.</p></section>
-<section class="panel"><h2>Attainment trends</h2>{{ campus_key() }}{{ chart(charts.get('trend_line'), 'trend_line', overview.period) }}<p class="analysis-caveat">Separate campus trends are descriptive. Course mix can change across terms; a fitted line is not a causal effect or evidence that individual students completed a pathway.</p></section>
-<details class="panel"><summary>Calculation method</summary><div class="details-body"><p>Each included assessment record is one measure. Attainment is the percentage in the rubric levels defined as attained. Measures meeting target are counted individually; outcome means are separate summaries. Direct and indirect evidence can be separated using the Method selector.</p><p>Missing observations remain missing. Repeated assessments are not assumed to be independent students. See Bloom & statistics for detailed tests and their limitations.</p><p>Direct: {{ overview.direct_count }} measures{% if overview.direct_mean is not none %}, mean {{ overview.direct_mean }}%{% endif %}. Indirect: {{ overview.indirect_count }} measures{% if overview.indirect_mean is not none %}, mean {{ overview.indirect_mean }}%{% endif %}.</p></div></details>
+{% include 'analysis_summary.html' %}
 {% elif active_view == 'courses' %}
-<section class="panel"><div class="section-heading"><div><p class="eyebrow">Course comparison</p><h2>Attainment by course</h2><p class="muted">{{ analysis.methodology.campus_scope.label }}. Each marker identifies the course’s mean target.</p></div></div>{{ chart(charts.get('course_attainment'), 'course_attainment', overview.period) }}<details class="analysis-data"><summary>View course values</summary>{{ summary_table(analysis.courses, 'Course') }}</details></section>
-<section class="panel"><h2>Course attainment by term</h2><p>Each course shows Edinburg and Brownsville separately. Select fewer courses for a more focused comparison.</p>{{ campus_key() }}{{ chart(charts.get('semester_course'), 'semester_course', overview.period) }}</section>
-<section class="panel"><h2>Course × outcome coverage</h2><p>{{ analysis.methodology.campus_scope.label }}. Blank cells mean no evidence, not zero attainment.</p>{{ chart(charts.get('course_outcome_heatmap'), 'course_outcome_heatmap', overview.period) }}<a href="{{ view_url(view='records') }}">Inspect the underlying measures →</a></section>
+<section class="panel"><div class="section-heading"><div><p class="eyebrow">Course comparison</p><h2>Attainment by course</h2><p class="muted">{{ analysis.methodology.campus_scope.label }}. Each marker identifies the course’s mean target.</p></div></div>{{ chart(charts.get('course_attainment'), 'course_attainment', overview.period) }}
+{{ explain_figure('course_attainment', analysis, charts) }}<details class="analysis-data"><summary>View course values</summary>{{ summary_table(analysis.courses, 'Course') }}</details></section>
+<section class="panel"><h2>Course attainment by term</h2><p>Each course shows Edinburg and Brownsville separately. Select fewer courses for a more focused comparison.</p>{{ campus_key() }}{{ chart(charts.get('semester_course'), 'semester_course', overview.period) }}
+{{ explain_figure('semester_course', analysis, charts) }}</section>
+<section class="panel"><h2>Course × outcome coverage</h2><p>{{ analysis.methodology.campus_scope.label }}. Blank cells mean no evidence, not zero attainment.</p>{{ chart(charts.get('course_outcome_heatmap'), 'course_outcome_heatmap', overview.period) }}
+{{ explain_figure('course_outcome_heatmap', analysis, charts) }}<a href="{{ view_url(view='records') }}">Inspect the underlying measures →</a></section>
 {% elif active_view == 'indicators' %}
 <section class="panel"><div class="section-heading"><div><p class="eyebrow">PI + Bloom trends</p><h2>PI and Bloom trends</h2></div></div><p>All selected PIs share one plot in labeled blocks. PI colors distinguish the blocks; filled symbols and solid fits represent Edinburg, hollow symbols and dash-dot fits represent Brownsville. Marker shapes identify Bloom levels. Observed symbols are not connected; there are no confidence bands.</p>
 {% if not request.args.get('outcome_id') %}<div class="analysis-caveat">For report-ready readability, select one student outcome above. All its PIs will remain together on the same plot.</div>{% endif %}
 {{ chart(charts.get('semester_indicator'), 'semester_indicator', overview.period) }}
+{{ explain_figure('semester_indicator', analysis, charts) }}
 <details class="analysis-data"><summary>View indicator values</summary>{{ summary_table(analysis.indicators, 'Performance indicator') }}</details><a class="card-link" href="{{ view_url(view='records') }}">Trace results to assessment records →</a></section>
 {% elif active_view == 'campus' %}
 {% include 'analysis_campus.html' %}

@@ -60,6 +60,8 @@ def create_app(test_config: dict | None = None) -> Flask:
     from .routes import bp
 
     app.register_blueprint(bp)
+    from .visit import bp as visit_bp
+    app.register_blueprint(visit_bp)
     app.before_request(load_identity)
     app.before_request(load_faculty_preview)
     app.before_request(enforce_password_change)

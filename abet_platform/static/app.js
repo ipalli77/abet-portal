@@ -428,7 +428,36 @@ function setupBulkApproval() {
   updateBulkApproval();
 }
 
+function setupChartSizing() {
+  document.querySelectorAll("[data-chart-sizing]").forEach((figure) => {
+    const button = figure.querySelector("[data-chart-size]");
+    const frame = figure.querySelector(".chart-frame");
+    const note = figure.querySelector("[data-chart-size-note]");
+    if (!button || !frame || !note) return;
+    button.hidden = false;
+    function setDetail(detail) {
+      figure.classList.toggle("is-detail", detail);
+      button.setAttribute("aria-pressed", String(detail));
+      button.textContent = detail ? "Fit to page" : "Detail size";
+      note.textContent = detail
+        ? "Scroll within the figure to inspect labels. Choose Fit to page to see the whole figure."
+        : "Full figure shown. Choose Detail size for a closer look.";
+      frame.scrollLeft = 0;
+      frame.scrollTop = 0;
+    }
+    setDetail(false);
+    button.addEventListener("click", () => setDetail(!figure.classList.contains("is-detail")));
+    frame.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && figure.classList.contains("is-detail")) {
+        setDetail(false);
+        button.focus();
+      }
+    });
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  setupChartSizing();
   setupCourseCampusAccessForms();
   setupAssessmentCourseCampusScope();
   setupAssessmentFilterCourseCampusScope();

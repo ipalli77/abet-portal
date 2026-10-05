@@ -37,10 +37,11 @@ from .analysis_engine import analyze_rows, generate_charts
 from .analytics import aggregate, summarize_records
 from .chart_cache import render_scoped_charts
 from .presentation import (
-    ANALYSIS_VIEWS, VIEW_CHARTS, SOURCE_FILES, evidence_overview,
+    ANALYSIS_VIEWS, VIEW_CHARTS, SUMMARY_FIGURES, SOURCE_FILES, evidence_overview,
     enrich_story, matched_campus_comparison, paginate_records,
 )
 from .db import get_db
+from .curriculum import curriculum_overview
 from .security import (
     audit,
     faculty_preview_scope_state,
@@ -1301,6 +1302,7 @@ def select_program():
 
 
 @bp.route("/")
+@bp.route("/assessment-overview", endpoint="assessment_overview")
 @login_required
 def dashboard():
     program = require_program()
@@ -1314,6 +1316,31 @@ def dashboard():
         (g.user["id"], session["organization_id"], g.membership["role"]),
     ).fetchall()
     records = list(_record_query(program["id"]))
+    if (request.endpoint == "platform.dashboard"
+            and current_app.config.get("EDITION") == "utrgv_mece"
+            and g.membership["role"] in MANAGER_ROLES):
+        # Presentation-only: never seed the full degree plan into the evidence
+        # catalog or broaden any faculty/reviewer course-campus permissions.
+        courses = db.execute("SELECT * FROM courses WHERE program_id=? ORDER BY code", (program["id"],)).fetchall()
+        linked_actions = db.execute(
+            """SELECT ia.*, ar.course_id FROM improvement_actions ia
+               LEFT JOIN assessment_records ar ON ar.id=ia.assessment_id AND ar.program_id=ia.program_id
+               WHERE ia.program_id=? ORDER BY ia.created_at DESC,ia.id DESC""", (program["id"],)).fetchall()
+        curriculum = curriculum_overview(courses, records, linked_actions,
+                                        _continuous_improvement_story_for_manager())
+        tab = request.args.get("tab", "courses")
+        category = request.args.get("category", "all")
+        highlight = request.args.get("highlight", "all")
+        if tab not in {"courses", "plan"} or category not in {"all", "me", "support", "portal"} or highlight not in {"all", "assessed", "improvement"}:
+            abort(400, "Unknown curriculum view or filter.")
+        query = request.args.get("q", "").strip()[:200]
+        visible_rows = [row for row in curriculum["rows"]
+                        if (category == "all" or row["group"] == category)
+                        and (highlight == "all" or row[highlight])
+                        and (not query or query.casefold() in (row["code"] + " " + row["title"]).casefold())]
+        return render_template("curriculum.html", program=program, programs=programs,
+                               curriculum=curriculum, visible_rows=visible_rows, tab=tab,
+                               category=category, highlight=highlight, query=query)
     display_records = [r for r in records if current_app.config.get("EDITION") != "utrgv_mece"
                        or r["campus"] in UTRGV_CAMPUSES]
     metrics = summarize_records(display_records)
@@ -2402,6 +2429,7 @@ def analytics():
         by_outcome=aggregate(records, "outcome") if records else [],
         by_course=aggregate(records, "course") if records else [],
         active_view=active_view, analysis_views=ANALYSIS_VIEWS,
+        summary_figures=SUMMARY_FIGURES,
         selection_labels=filters["selection_labels"],
         overview=_overview(records, program["id"], outcome_id=filters["selected_dimensions"]["outcome_id"], approved_only=filters["evidence_scope"] == "approved"),
         matched=matched_campus_comparison(records),
